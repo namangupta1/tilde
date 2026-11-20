@@ -30,10 +30,15 @@ enum SSH {
     static func interactiveArgs(_ h: Host) -> [String] {
         var a = baseArgs(h) + ["-o", "ConnectTimeout=10"]
         let exports = h.env.filter { !$0.key.isEmpty }.map { "export \($0.key)=\(shellQuote($0.value))" }
-        if exports.isEmpty {
+        let tmux = h.tmuxSession.trimmingCharacters(in: .whitespaces)
+        // tmux keeps the remote shell alive across disconnects; falls back to a login shell without tmux.
+        let shell = tmux.isEmpty
+            ? "exec \"${SHELL:-/bin/sh}\" -l"
+            : "if command -v tmux >/dev/null 2>&1; then exec tmux new-session -A -s \(shellQuote(tmux)); else echo 'tmux not installed on this host' >&2; exec \"${SHELL:-/bin/sh}\" -l; fi"
+        if exports.isEmpty && tmux.isEmpty {
             a.append(h.address)
         } else {
-            a += ["-t", h.address, exports.joined(separator: "; ") + "; exec \"${SHELL:-/bin/sh}\" -l"]
+            a += ["-t", h.address, (exports + [shell]).joined(separator: "; ")]
         }
         return a
     }

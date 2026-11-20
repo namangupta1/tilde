@@ -71,6 +71,17 @@ struct TabHeader: View {
                     .buttonStyle(.plain)
                     .help("Broadcast input is on — click to stop (⌥⌘I)")
                 }
+                if let agent = store.agentState(tab) {
+                    Label("Claude: \(agent.label)", systemImage: agent.symbol)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(agent.color)
+                }
+                if tab.zoomedPaneID != nil {
+                    Button { store.toggleZoom() } label: {
+                        Label("Zoomed", systemImage: "arrow.up.left.and.arrow.down.right").font(.caption)
+                    }
+                    .buttonStyle(.plain).foregroundStyle(.secondary).help("Show all panes (⇧⌘↩)")
+                }
                 if let rec = TerminalRegistry.shared.existing(tab.activePaneID)?.lastFinished {
                     LastCommandBadge(record: rec)
                 }

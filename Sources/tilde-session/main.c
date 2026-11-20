@@ -281,9 +281,8 @@ static void on_winch(int s) { (void)s; winch = 1; }
 
 static double now_s(void) { struct timeval t; gettimeofday(&t, NULL); return t.tv_sec + t.tv_usec / 1e6; }
 
-static int spawn_daemon(const char *sock, const char *cwd, const char *exe, char **argv) {
-    // The terminal view is often still being laid out; start the shell at its settled size
-    // (zsh draws its prompt for the width it starts with).
+// The terminal view is often still being laid out when we start; wait for its size to settle.
+static struct winsize settled_size(void) {
     struct winsize ws = { 24, 80, 0, 0 }, prev = { 0, 0, 0, 0 };
     usleep(40000);
     for (int i = 0; i < 8; i++) {
@@ -293,6 +292,12 @@ static int spawn_daemon(const char *sock, const char *cwd, const char *exe, char
         usleep(30000);
     }
     if (ws.ws_row == 0 || ws.ws_col == 0) { ws.ws_row = 24; ws.ws_col = 80; }
+    return ws;
+}
+
+static int spawn_daemon(const char *sock, const char *cwd, const char *exe, char **argv) {
+    // zsh draws its prompt for the width it starts with.
+    struct winsize ws = settled_size();
     pid_t p = fork();
     if (p < 0) return -1;
     if (p == 0) {
@@ -315,6 +320,9 @@ static int cmd_attach(int argc, char **argv) {
     const char *sock = argv[2], *cwd = argv[3], *exe = argv[4];
     char **child_argv = &argv[5];
 
+    // Reattaching: the replay is drawn at whatever size the view has when we connect,
+    // so let the layout settle first (otherwise replayed lines scroll out of sight).
+    if (access(sock, F_OK) == 0) (void)settled_size();
     int fd = connect_sock(sock);
     if (fd < 0) {
         unlink(sock);

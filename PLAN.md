@@ -58,5 +58,15 @@ Distribution: ad-hoc signed `.app` packaged into a `.dmg` (`scripts/package.sh`)
 - [x] Transcript export to Markdown (⇧⌘E): scrollback per pane + command table
 - [x] iTerm2 `.itermcolors` import (auto-assigned to dark/light by background), reset in Settings
 - [x] `package.sh`: Developer ID signing (hardened runtime) + notarization via `DEVELOPER_ID` / `NOTARY_PROFILE`
-- [ ] Not yet verified in the app: SSH drop-upload, local file drop, iTerm import, multi-host run, pressing the global hotkey itself
+- [x] Verified (2026-11-20): background sessions + replay, broadcast, templates, quick terminal (menu), transcript export, multi-host run, SSH upload command, iTerm import parser, bash integration
+- [ ] Not yet verified by hand: pressing the global hotkey itself, real drag-and-drop / paste gestures, right-click menu, fish (not installed)
 - [ ] Later: commands run before a reattach aren't in ⌘K history (replayed output is ignored on purpose)
+
+## Parity pass ✅ (2026-11-20) — see PARITY.md
+- [x] Verified in the app: zoom / equalize / pane cycling + directional focus, dimmed inactive panes, smart tab names,
+      search all sessions (now searches as you type), reopen closed tab, detach + reattach (running job survives),
+      shortcuts sheet, theme switch from ⌘K, Claude Code status (Working badge, Needs-you flag on a background tab), git worktree tab
+- [x] Fixed while testing: replay drawn before layout settled (only fragments showed after reattach); dimmed panes kept the old theme colour
+- [x] Universal build (Apple silicon + Intel) via per-arch builds + lipo
+- [ ] Note: each ad-hoc rebuild is a "new app" to macOS privacy, so shells starting in ~/Documents wait for the Files & Folders prompt
+- [ ] Later: multiple windows; auto-update (needs a public feed); Developer ID signing + notarization

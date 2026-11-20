@@ -127,17 +127,25 @@ struct TabRow: View {
         let prod = store.isProduction(tab)
         let remote = tab.root.allPanes.contains { if case .ssh = $0.connection { return true }; return false }
         let needsYou = store.attention.contains(tab.id)
+        let agent = store.agentState(tab)
         HStack(spacing: 6) {
             ZStack {
-                Circle()
-                    .fill(tab.color.color ?? (prod ? .red : Color.secondary.opacity(0.35)))
-                    .frame(width: 7, height: 7)
+                if let agent {
+                    Image(systemName: agent.symbol)
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(agent.color)
+                        .symbolEffect(.pulse, isActive: agent == .working)
+                } else {
+                    Circle()
+                        .fill(tab.color.color ?? (prod ? .red : Color.secondary.opacity(0.35)))
+                        .frame(width: 7, height: 7)
+                }
                 if needsYou {
-                    Circle().stroke(Color.accentColor, lineWidth: 2).frame(width: 12, height: 12)
+                    Circle().stroke(Color.accentColor, lineWidth: 2).frame(width: 13, height: 13)
                 }
             }
-            .frame(width: 12, height: 12)
-            .help(needsYou ? "Needs attention (⌘J)" : "")
+            .frame(width: 13, height: 13)
+            .help(agent.map { "Claude: \($0.label)" } ?? (needsYou ? "Needs attention (⌘J)" : ""))
             VStack(alignment: .leading, spacing: 1) {
                 if store.renamingTabID == tab.id {
                     InlineRenameField(initial: tab.customTitle ?? store.displayTitle(tab)) { name in
@@ -148,6 +156,7 @@ struct TabRow: View {
                     HStack(spacing: 4) {
                         Text(store.displayTitle(tab))
                             .lineLimit(1)
+                            .fontWeight(needsYou || agent == .waiting ? .semibold : .regular)
                             .fontWeight(needsYou ? .bold : (tab.customTitle != nil ? .medium : .regular))
                         if remote {
                             Image(systemName: "network").font(.caption2).foregroundStyle(.secondary)

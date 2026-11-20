@@ -409,6 +409,7 @@ struct HostEditor: View {
                     }
                     TextField("Jump host", text: $host.jumpHost, prompt: Text("optional, user@bastion"))
                     TextField("Extra ssh options", text: $host.extraArgs, prompt: Text("optional, e.g. -A -o StrictHostKeyChecking=accept-new"))
+                    TextField("tmux session", text: $host.tmuxSession, prompt: Text("optional, e.g. main — SSH tabs reattach to it"))
                         .font(.body.monospaced())
                     TextField("Tags", text: $tagsText, prompt: Text("comma separated — “prod” turns tabs red"))
                 }

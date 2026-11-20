@@ -16,14 +16,21 @@ VERSION="${VERSION:-0.1.0}"
 DIST="dist"
 APP="$DIST/$APP_NAME.app"
 
-echo "→ Building release binary"
-if swift build -c release --arch arm64 --arch x86_64 >/dev/null 2>&1; then
-  BINDIR=".build/apple/Products/Release"
-else
-  echo "  (universal build unavailable, building for host arch)"
-  swift build -c release
-  BINDIR=".build/release"
-fi
+echo "→ Building release binaries"
+# Universal (Apple silicon + Intel): build each arch on its own and merge with lipo.
+# UNIVERSAL=0 builds for this Mac only.
+BINDIR="$(mktemp -d)"
+ARCHS=(arm64 x86_64)
+[[ "${UNIVERSAL:-1}" == 0 ]] && ARCHS=("$(uname -m)")
+for arch in "${ARCHS[@]}"; do
+  echo "  · $arch"
+  LOG="$BINDIR/build-$arch.log"
+  swift build -c release --arch "$arch" >"$LOG" 2>&1 || { grep -E "error:" "$LOG" || tail -20 "$LOG"; exit 1; }
+done
+for bin in "$APP_NAME" tilde-session; do
+  lipo -create $(for a in "${ARCHS[@]}"; do echo ".build/$a-apple-macosx/release/$bin"; done) -output "$BINDIR/$bin"
+done
+echo "  $(lipo -archs "$BINDIR/$APP_NAME")"
 
 echo "→ Assembling $APP"
 rm -rf "$APP"

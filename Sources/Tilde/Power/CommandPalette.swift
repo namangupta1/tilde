@@ -43,6 +43,16 @@ enum PaletteBuilder {
         let actions: [(String, String, String, @MainActor () -> Void)] = [
             ("New Tab", "plus.square", "⌘T", { store.newTab() }),
             ("New Folder", "folder.badge.plus", "⇧⌘N", { store.addFolder() }),
+            ("New Tab in Git Worktree…", "arrow.triangle.branch", "⌥⌘T", { store.newWorktreeTab() }),
+            ("Reopen Closed Tab", "arrow.uturn.backward", "⇧⌘T", { store.reopenClosedTab() }),
+            ("Detach Tab", "rectangle.portrait.and.arrow.right", "", { if let t = store.selectedTab { store.detachTab(t.id) } }),
+            ("Detached Sessions…", "tray.full", "", { store.showDetached = true }),
+            ("Search All Sessions…", "text.magnifyingglass", "⇧⌘F", { store.showSessionSearch = true }),
+            ("Copy Last Command Output", "doc.on.clipboard", "⇧⌘C", { store.copyLastOutput() }),
+            ("Zoom Pane", "arrow.up.left.and.arrow.down.right", "⇧⌘↩", { store.toggleZoom() }),
+            ("Equalize Panes", "rectangle.split.3x1", "⌃⌘=", { store.equalizePanes() }),
+            ("Clear Scrollback", "eraser", "⌥⌘K", { store.clearActive(scrollback: true) }),
+            ("Keyboard Shortcuts", "keyboard", "⌘/", { store.showShortcuts = true }),
             ("Add Folder from Disk…", "folder", "⌘O", { store.addFolderFromDisk() }),
             ("Split Right", "rectangle.split.2x1", "⌘D", { store.split(.horizontal) }),
             ("Split Down", "rectangle.split.1x2", "⇧⌘D", { store.split(.vertical) }),
@@ -68,8 +78,20 @@ enum PaletteBuilder {
             ("Appearance: System", "circle.lefthalf.filled", "", { theme.modeRaw = AppearanceMode.system.rawValue }),
             ("Settings…", "gearshape", "⌘,", { NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) }),
         ]
+        for t in BuiltinTheme.allCases {
+            out.append(PaletteItem(id: "theme:\(t.rawValue)", title: "Theme: \(t.label)", icon: "paintpalette", kind: "Action",
+                                   shortcut: theme.themeRaw == t.rawValue ? "current" : "", action: { theme.themeRaw = t.rawValue }))
+        }
         for (title, icon, key, act) in actions {
             out.append(PaletteItem(id: "action:" + title, title: title, icon: icon, kind: "Action", shortcut: key, action: act))
+        }
+
+        // Folders: recent, zoxide, git repos
+        for (path, kind) in FolderFinder.candidates(store: store) {
+            out.append(PaletteItem(id: "dir:\(path)", title: "Open folder: \((path as NSString).lastPathComponent)",
+                                   subtitle: path.replacingOccurrences(of: NSHomeDirectory(), with: "~") + " · " + kind,
+                                   icon: kind == "Git repo" ? "arrow.triangle.branch" : "folder", kind: "Folder",
+                                   action: { store.openFolder(path) }))
         }
 
         // Templates
@@ -145,7 +167,7 @@ struct CommandPalette: View {
     private var results: [PaletteItem] {
         if query.trimmingCharacters(in: .whitespaces).isEmpty {
             // Empty query: tabs needing attention, recent commands, then tabs, then actions.
-            let order = ["Tab", "Recent", "Snippet", "Template", "Action", "Host", "Host command"]
+            let order = ["Tab", "Recent", "Snippet", "Template", "Action", "Host", "Host command", "Folder"]
             return all.filter { $0.kind != "Recent" || !$0.id.hasPrefix("save:") }
                 .sorted { (order.firstIndex(of: $0.kind) ?? 9) < (order.firstIndex(of: $1.kind) ?? 9) }
                 .prefix(60).map { $0 }

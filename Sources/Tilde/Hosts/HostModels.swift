@@ -24,6 +24,8 @@ struct Host: Codable, Hashable, Identifiable {
     var jumpHost: String = ""
     /// Extra ssh arguments, e.g. `-o StrictHostKeyChecking=accept-new -A`.
     var extraArgs: String = ""
+    /// When set, SSH tabs attach to (or create) this tmux session on the host, so work survives disconnects.
+    var tmuxSession: String = ""
     var tags: [String] = []
     var notes: String = ""
     var env: [KeyValue] = []
@@ -33,7 +35,7 @@ struct Host: Codable, Hashable, Identifiable {
     var factsUpdated: Date?
 
     enum CodingKeys: String, CodingKey {
-        case id, name, address, user, port, identityFile, jumpHost, extraArgs, tags, notes, env, commands, cachedFacts, factsUpdated
+        case id, name, address, user, port, identityFile, jumpHost, extraArgs, tmuxSession, tags, notes, env, commands, cachedFacts, factsUpdated
     }
 
     init(name: String, address: String, commands: [QuickCommand] = []) {
@@ -53,6 +55,7 @@ struct Host: Codable, Hashable, Identifiable {
         identityFile = try c.decodeIfPresent(String.self, forKey: .identityFile) ?? ""
         jumpHost = try c.decodeIfPresent(String.self, forKey: .jumpHost) ?? ""
         extraArgs = try c.decodeIfPresent(String.self, forKey: .extraArgs) ?? ""
+        tmuxSession = try c.decodeIfPresent(String.self, forKey: .tmuxSession) ?? ""
         tags = try c.decodeIfPresent([String].self, forKey: .tags) ?? []
         notes = try c.decodeIfPresent(String.self, forKey: .notes) ?? ""
         env = try c.decodeIfPresent([KeyValue].self, forKey: .env) ?? []

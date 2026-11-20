@@ -111,6 +111,8 @@ struct TerminalTab: Codable, Identifiable, Hashable {
     var color: TabColor = .none
     /// Keystrokes in one pane go to every pane of this tab.
     var broadcast = false
+    /// Pane shown alone, filling the tab (⇧⌘↩).
+    var zoomedPaneID: UUID?
     var root: PaneNode
     var activePaneID: UUID
 
@@ -125,7 +127,7 @@ struct TerminalTab: Codable, Identifiable, Hashable {
         activePaneID = root.allPanes.first!.id
     }
 
-    private enum CodingKeys: String, CodingKey { case id, customTitle, notes, color, broadcast, root, activePaneID }
+    private enum CodingKeys: String, CodingKey { case id, customTitle, notes, color, broadcast, zoomedPaneID, root, activePaneID }
 
     // Tolerant decoding so older workspace files (missing newer keys) still load.
     init(from decoder: Decoder) throws {
@@ -135,6 +137,7 @@ struct TerminalTab: Codable, Identifiable, Hashable {
         notes = try c.decodeIfPresent(String.self, forKey: .notes) ?? ""
         color = try c.decodeIfPresent(TabColor.self, forKey: .color) ?? .none
         broadcast = try c.decodeIfPresent(Bool.self, forKey: .broadcast) ?? false
+        zoomedPaneID = try c.decodeIfPresent(UUID.self, forKey: .zoomedPaneID)
         root = try c.decode(PaneNode.self, forKey: .root)
         activePaneID = try c.decodeIfPresent(UUID.self, forKey: .activePaneID) ?? root.allPanes.first!.id
     }
@@ -149,7 +152,29 @@ struct Folder: Codable, Identifiable, Hashable {
     var tabs: [TerminalTab] = []
 }
 
+/// A tab taken out of the window whose shells keep running (File ▸ Detach Tab).
+struct DetachedTab: Codable, Identifiable, Hashable {
+    var id: UUID { tab.id }
+    var tab: TerminalTab
+    var folderID: UUID?
+    var folderName: String
+    var title: String
+    var detachedAt = Date()
+}
+
 struct Workspace: Codable {
     var folders: [Folder] = []
     var selectedTabID: UUID?
+    var detached: [DetachedTab] = []
+
+    init() {}
+
+    private enum CodingKeys: String, CodingKey { case folders, selectedTabID, detached }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        folders = try c.decodeIfPresent([Folder].self, forKey: .folders) ?? []
+        selectedTabID = try c.decodeIfPresent(UUID.self, forKey: .selectedTabID)
+        detached = (try? c.decodeIfPresent([DetachedTab].self, forKey: .detached)) ?? []
+    }
 }

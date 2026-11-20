@@ -124,6 +124,10 @@ struct TerminalContainer: NSViewRepresentable {
         session.onCommandFinished = { [weak store] rec in store?.commandFinished(paneID: paneID, record: rec) }
         session.onAttention = { [weak store] title, body in store?.paneWantsAttention(paneID: paneID, title: title, body: body) }
         session.onToast = { [weak store] text in store?.showToast(text, seconds: text.hasSuffix("…") ? 600 : 5) }
+        session.view.menuProvider = { [weak store, weak session] in
+            guard let store, let session else { return NSMenu() }
+            return session.contextMenu(store: store)
+        }
         session.view.broadcastPeers = { [weak store] in store?.broadcastPeers(of: paneID) ?? [] }
         session.onFocus = { [weak store] in
             DispatchQueue.main.async { store?.setActivePane(paneID, inTab: tabID) }
@@ -147,11 +151,23 @@ struct PaneTreeView: View {
     let node: PaneNode
     let tab: TerminalTab
     @EnvironmentObject var store: WorkspaceStore
+    @AppStorage("dimInactivePanes") private var dimInactive = true
+    @EnvironmentObject var theme: ThemeManager
 
     var body: some View {
+        // Zoomed: render only that pane.
+        if node == tab.root, let z = tab.zoomedPaneID, let pane = tab.root.allPanes.first(where: { $0.id == z }) {
+            PaneTreeView(node: .leaf(pane), tab: tab)
+        } else {
+            content
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
         switch node {
         case .leaf(let pane):
-            let multi = tab.root.allPanes.count > 1
+            let multi = tab.root.allPanes.count > 1 && tab.zoomedPaneID == nil
             let active = pane.id == tab.activePaneID
             let broadcasting = tab.broadcast && multi
             TerminalContainer(pane: pane, tabID: tab.id, isActive: active)
@@ -162,6 +178,10 @@ struct PaneTreeView: View {
                                       lineWidth: broadcasting ? 2 : 1.5)
                         .allowsHitTesting(false)
                 )
+                // Unfocused panes are dimmed slightly.
+                .overlay(Color(nsColor: theme.palette.background)
+                    .opacity(multi && !active && dimInactive ? 0.35 : 0)
+                    .allowsHitTesting(false))
                 .id(pane.id)
         case .split(let axis, let children):
             SplitContainer(axis: axis, children: children, tab: tab)
@@ -197,6 +217,7 @@ struct SplitContainer: View {
             }
         }
         .onChange(of: children.count) { _, _ in fractions = [] }
+        .onReceive(NotificationCenter.default.publisher(for: .equalizePanes)) { _ in fractions = [] }
     }
 
     private var normalized: [CGFloat] {

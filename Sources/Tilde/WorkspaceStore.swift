@@ -20,6 +20,9 @@ final class WorkspaceStore: ObservableObject {
     @Published var showPalette = false
     @Published var showSnippets = false
     @Published var showTemplates = false
+    @Published var showDetached = false
+    @Published var showSessionSearch = false
+    @Published var showShortcuts = false
     @Published var showMultiRun = false
     /// Short message shown at the bottom of the window (e.g. upload progress).
     @Published var toast: String?
@@ -87,7 +90,9 @@ final class WorkspaceStore: ObservableObject {
         return "Terminal"
     }
 
-    private func mutateTab(_ id: UUID, _ change: (inout TerminalTab) -> Void) {
+    static var closedTabs: [ClosedTab] = []
+
+    func mutateTab(_ id: UUID, _ change: (inout TerminalTab) -> Void) {
         guard let fi = folderIndex(containingTab: id),
               let ti = workspace.folders[fi].tabs.firstIndex(where: { $0.id == id }) else { return }
         change(&workspace.folders[fi].tabs[ti])
@@ -287,6 +292,7 @@ final class WorkspaceStore: ObservableObject {
               let ti = workspace.folders[fi].tabs.firstIndex(where: { $0.id == id }) else { return }
         let ordered = orderedTabs
         let flatIndex = ordered.firstIndex { $0.id == id } ?? 0
+        rememberClosed(workspace.folders[fi].tabs[ti], folderID: workspace.folders[fi].id, index: ti)
         for p in workspace.folders[fi].tabs[ti].root.allPanes { TerminalRegistry.shared.close(p.id) }
         workspace.folders[fi].tabs.remove(at: ti)
         if workspace.selectedTabID == id {
@@ -362,6 +368,7 @@ final class WorkspaceStore: ObservableObject {
         let conn = t.root.allPanes.first { $0.id == t.activePaneID }?.connection
         let newPane = Pane(lastDirectory: dir, connection: conn)
         mutateTab(t.id) {
+            $0.zoomedPaneID = nil
             $0.root = $0.root.splitting($0.activePaneID, axis: axis, newPane: newPane)
             $0.activePaneID = newPane.id
         }
@@ -384,6 +391,7 @@ final class WorkspaceStore: ObservableObject {
         guard let newRoot = t.root.removing(paneID) else { closeTab(tabID); return }
         mutateTab(tabID) {
             $0.root = newRoot
+            if $0.zoomedPaneID == paneID || newRoot.allPanes.count < 2 { $0.zoomedPaneID = nil }
             if $0.activePaneID == paneID { $0.activePaneID = newRoot.allPanes.last!.id }
         }
     }
@@ -424,6 +432,7 @@ final class WorkspaceStore: ObservableObject {
         var changed = false
         for s in TerminalRegistry.shared.sessions.values where s.refresh() { changed = true }
         if changed { titleTick &+= 1 }
+        pollAgents()
     }
 
     /// Copies live cwd into the model so restore reopens shells where they were.

@@ -18,10 +18,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSWindow.allowsAutomaticWindowTabbing = false
         Broadcast.install()
         QuickTerminal.shared.start()
+        SecureInput.install()
+        AgentHooks.installScript()
+        FolderFinder.refresh()
         // Shells left behind by panes that no longer exist.
         if PersistentSessions.available {
             var keep = Set(TildeApp.store.orderedTabs.flatMap { $0.root.allPanes.map(\.id) })
             keep.insert(QuickTerminal.paneID)
+            for d in TildeApp.store.workspace.detached { for p in d.tab.root.allPanes { keep.insert(p.id) } }
             PersistentSessions.cleanup(keeping: keep)
         }
     }
@@ -89,6 +93,15 @@ struct TildeApp: App {
                 TemplateManager(onClose: { store.showTemplates = false })
                     .environmentObject(TemplateStore.shared).environmentObject(store).environmentObject(hostStore)
             }
+            .sheet(isPresented: $store.showDetached) {
+                DetachedSessionsView(onClose: { store.showDetached = false }).environmentObject(store)
+            }
+            .sheet(isPresented: $store.showSessionSearch) {
+                SessionSearchView(onClose: { store.showSessionSearch = false }).environmentObject(store)
+            }
+            .sheet(isPresented: $store.showShortcuts) {
+                ShortcutsView(onClose: { store.showShortcuts = false })
+            }
             .sheet(isPresented: $store.showMultiRun) {
                 MultiHostRunView(onClose: { store.showMultiRun = false })
                     .environmentObject(hostStore).environmentObject(theme)
@@ -152,6 +165,11 @@ struct TildeCommands: Commands {
 
     var body: some Commands {
         SidebarCommands()
+        CommandGroup(after: .appSettings) {
+            Toggle("Secure Keyboard Entry", isOn: Binding(
+                get: { SecureInput.enabled },
+                set: { UserDefaults.standard.set($0, forKey: SecureInput.key); SecureInput.update() }))
+        }
         CommandGroup(after: .appTermination) {
             Button("Quit and End All Shells") {
                 AppDelegate.endSessionsOnQuit = true
@@ -161,6 +179,7 @@ struct TildeCommands: Commands {
         }
         CommandGroup(replacing: .newItem) {
             Button("New Tab") { store.newTab() }.keyboardShortcut("t")
+            Button("New Tab in Git Worktree…") { store.newWorktreeTab() }.keyboardShortcut("t", modifiers: [.command, .option])
             Button("New Folder") { store.addFolder() }.keyboardShortcut("n", modifiers: [.command, .shift])
             Button("Add Folder from Disk…") { store.addFolderFromDisk() }.keyboardShortcut("o")
             TemplatesMenu(store: store)
@@ -174,6 +193,14 @@ struct TildeCommands: Commands {
             Button("New Host…") { store.editingHost = Host.blank() }.keyboardShortcut("h", modifiers: [.command, .shift])
             Button("Run Command on Hosts…") { store.showMultiRun = true }.keyboardShortcut("h", modifiers: [.command, .option])
             Divider()
+            Button("Detach Tab") { if let t = store.selectedTab { store.detachTab(t.id) } }
+                .disabled(!PersistentSessions.available)
+            Button("Detached Sessions…") { store.showDetached = true }
+            Button("Reopen Closed Tab") { store.reopenClosedTab() }.keyboardShortcut("t", modifiers: [.command, .shift])
+            Divider()
+            Button("Export Scrollback…") { if let t = store.selectedTab { store.exportTranscript(t.id) } }
+                .keyboardShortcut("s", modifiers: [.command, .shift])
+            Divider()
             Button("Close Pane") { store.closeActivePane() }.keyboardShortcut("w")
             Button("Close Tab") { if let t = store.selectedTab { store.closeTab(t.id) } }
                 .keyboardShortcut("w", modifiers: [.command, .option])
@@ -183,10 +210,29 @@ struct TildeCommands: Commands {
             Button("Find…") { store.activeSession?.showFind() }.keyboardShortcut("f")
             Button("Find Next") { store.activeSession?.findNext() }.keyboardShortcut("g")
             Button("Find Previous") { store.activeSession?.findPrevious() }.keyboardShortcut("g", modifiers: [.command, .shift])
+            Button("Search All Sessions…") { store.showSessionSearch = true }.keyboardShortcut("f", modifiers: [.command, .shift])
+            Divider()
+            Button("Copy Last Command Output") { store.copyLastOutput() }.keyboardShortcut("c", modifiers: [.command, .shift])
+            Button("Open Selected File in Editor") { store.openSelectedFile() }.keyboardShortcut("o", modifiers: [.command, .shift])
+            Button("Paste Image as File Path") { store.activeSession?.pasteImageAsPath() }.keyboardShortcut("v", modifiers: [.command, .option])
+            Divider()
+            Button("Clear Screen") { store.clearActive(scrollback: false) }.keyboardShortcut("l", modifiers: [.command])
+            Button("Clear Scrollback") { store.clearActive(scrollback: true) }.keyboardShortcut("k", modifiers: [.command, .option])
         }
         CommandMenu("Go") {
             Button("Command Palette…") { store.showPalette.toggle() }.keyboardShortcut("k")
+            Button("Command Palette (alt)") { store.showPalette.toggle() }.keyboardShortcut("p", modifiers: [.command, .shift])
             Button("Jump to Tab Needing Attention") { store.jumpToAttention() }.keyboardShortcut("j")
+            Divider()
+            Divider()
+            Button("Previous Pane") { store.cyclePane(-1) }.keyboardShortcut("[")
+            Button("Next Pane") { store.cyclePane(1) }.keyboardShortcut("]")
+            Button("Pane Left") { store.focusPane(.left) }.keyboardShortcut(.leftArrow, modifiers: [.command, .option])
+            Button("Pane Right") { store.focusPane(.right) }.keyboardShortcut(.rightArrow, modifiers: [.command, .option])
+            Button("Pane Above") { store.focusPane(.up) }.keyboardShortcut(.upArrow, modifiers: [.command, .option])
+            Button("Pane Below") { store.focusPane(.down) }.keyboardShortcut(.downArrow, modifiers: [.command, .option])
+            Button("Zoom Pane") { store.toggleZoom() }.keyboardShortcut(.return, modifiers: [.command, .shift])
+            Button("Equalize Panes") { store.equalizePanes() }.keyboardShortcut("=", modifiers: [.command, .control])
             Divider()
             Button("Previous Prompt") { store.activeSession?.jumpToPrompt(up: true) }.keyboardShortcut(.upArrow)
             Button("Next Prompt") { store.activeSession?.jumpToPrompt(up: false) }.keyboardShortcut(.downArrow)
@@ -214,6 +260,8 @@ struct TildeCommands: Commands {
                 .keyboardShortcut("e", modifiers: [.command, .shift])
             Button("Restart / Reconnect Pane") { store.restartActivePane() }.keyboardShortcut("r", modifiers: [.command, .shift])
             Divider()
+            Button("Move Tab Up") { store.moveSelectedTab(-1) }.keyboardShortcut("[", modifiers: [.command, .shift, .control])
+            Button("Move Tab Down") { store.moveSelectedTab(1) }.keyboardShortcut("]", modifiers: [.command, .shift, .control])
             Button("Previous Tab") { store.cycleTab(-1) }.keyboardShortcut("[", modifiers: [.command, .shift])
             Button("Next Tab") { store.cycleTab(1) }.keyboardShortcut("]", modifiers: [.command, .shift])
             Divider()
@@ -221,6 +269,9 @@ struct TildeCommands: Commands {
                 Button(i == 8 ? "Last Tab" : "Tab \(i + 1)") { store.selectTab(atFlatIndex: i) }
                     .keyboardShortcut(KeyEquivalent(Character("\(i + 1)")))
             }
+        }
+        CommandGroup(replacing: .help) {
+            Button("Keyboard Shortcuts") { store.showShortcuts = true }.keyboardShortcut("/")
         }
         CommandGroup(after: .toolbar) {
             Button("Bigger Text") { theme.bumpFont(1) }.keyboardShortcut("=")

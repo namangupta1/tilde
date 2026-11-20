@@ -29,7 +29,26 @@ final class TildeTerminalView: LocalProcessTerminalView {
         return true
     }
 
+    /// ⌘-click on a non-URL link (file path); return true when handled.
+    var onOpenFileLink: ((String) -> Bool)?
+    var menuProvider: (() -> NSMenu)?
+
+    override func requestOpenLink(source: TerminalView, request: TerminalLinkRequest) {
+        if let h = onOpenFileLink, h(request.link) { return }
+        super.requestOpenLink(source: source, request: request)
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? { menuProvider?() }
+
     override func paste(_ sender: Any) {
+        // Files copied in Finder paste as their quoted paths.
+        let pb = NSPasteboard.general
+        if let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
+            let text = urls.map { "'" + $0.path.replacingOccurrences(of: "'", with: "'\\''") + "'" }.joined(separator: " ") + " "
+            send(txt: text)
+            for v in broadcastPeers?() ?? [] { v.send(txt: text) }
+            return
+        }
         super.paste(sender)
         for v in broadcastPeers?() ?? [] { v.paste(sender) }
     }
@@ -77,6 +96,9 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
     /// True while the daemon replays old output after reattaching: ignore its events.
     private var replaying = false
     private var quietUntil = Date.distantPast
+    /// Coding agent state in this pane (Claude Code), from hooks or its title.
+    var agentState: AgentState?
+    var titleForAgent: String? { oscTitle }
     /// Typed into the shell once it starts (workspace templates).
     var startupCommand: String?
 
@@ -111,6 +133,7 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
         }
         view.enableFileDrops()
         view.onDropFiles = { [weak self] urls in self?.filesDropped(urls) }
+        view.onOpenFileLink = { [weak self] link in self?.openLinkAsFile(link) ?? false }
         applyTheme()
         NotificationCenter.default.addObserver(self, selector: #selector(themeChanged), name: .terminalThemeChanged, object: nil)
         start(shell: shell)
@@ -127,10 +150,14 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
         env["TERM_PROGRAM"] = "Tilde"
         env["TILDE_PANE_ID"] = paneID.uuidString
         if env["LANG"] == nil { env["LANG"] = "en_US.UTF-8" }
+        // Login shell by default: a leading "-" in argv[0], like Terminal.app.
+        var shellArgv0 = "-" + shellName, shellArgs: [String] = []
         if connection == nil || { if case .localEnv = connection { return true }; return false }() {
-            ShellIntegration.apply(to: &env, shellName: shellName)
+            ShellIntegration.apply(to: &env, shellName: shellName, argv0: &shellArgv0, args: &shellArgs)
         }
         env.removeValue(forKey: "TERM_SESSION_ID")
+        // Lets programs (vim, bat, …) pick light or dark colours.
+        env["COLORFGBG"] = ThemeManager.shared.palette.isDarkBackground ? "15;0" : "0;15"
         if let host {
             env["TILDE_HOST"] = host.address
             env["TILDE_HOST_NAME"] = host.name
@@ -151,8 +178,7 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
             (exe, argv0, args) = (SSH.executable, "ssh", SSH.interactiveArgs(host))
             HostMonitor.shared.poke(host.id)
         } else {
-            // Leading "-" in argv[0] makes it a login shell, like Terminal.app.
-            (exe, argv0, args) = (shell, "-" + shellName, [])
+            (exe, argv0, args) = (shell, shellArgv0, shellArgs)
         }
         var reattaching = false
         if PersistentSessions.available, let helper = PersistentSessions.helper {
@@ -181,6 +207,8 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
         view.nativeBackgroundColor = p.background
         view.caretColor = p.cursor
         view.selectedTextBackgroundColor = p.selection
+        view.optionAsMetaKey = theme.optionAsMeta
+        view.setCursorStyle(theme.cursorStyle)
         view.installColors(p.swiftTermColors)
         view.layer?.backgroundColor = p.background.cgColor
         view.needsDisplay = true
@@ -299,13 +327,19 @@ final class TerminalSession: NSObject, LocalProcessTerminalViewDelegate {
     /// Automatic tab title when the user hasn't renamed the tab.
     var autoTitle: String {
         // While a program runs, prefer the title it sets (e.g. Claude Code's session name), else its name.
+        let title = oscTitle.map(TerminalSession.cleanTitle)
         if case .ssh = connection, let n = hostName {
-            if let t = oscTitle?.trimmingCharacters(in: .whitespaces), !t.isEmpty { return t }
+            if let t = title, !t.isEmpty { return t }
             return n
         }
         if let p = foregroundProgram {
-            if let t = oscTitle?.trimmingCharacters(in: .whitespaces), !t.isEmpty { return t }
+            if let t = title, !t.isEmpty { return t }
             return p
+        }
+        // A command that ran for a while (a dev server, a build) names the tab; quick ones don't.
+        if let last = lastFinished, (last.duration ?? 0) >= 3 {
+            let c = last.command.split(separator: "\n").first.map(String.init) ?? last.command
+            return c.count > 32 ? String(c.prefix(31)) + "…" : c
         }
         if let d = currentDirectory {
             if d == NSHomeDirectory() { return "~" }
@@ -390,6 +424,12 @@ final class TerminalRegistry {
     func closeAll(endSessions: Bool) {
         for s in sessions.values { s.terminate(endSession: endSessions) }
         sessions.removeAll()
+    }
+
+    /// Drops the view but leaves the shell running in its daemon.
+    func detach(_ paneID: UUID) {
+        sessions[paneID]?.terminate(endSession: false)
+        sessions[paneID] = nil
     }
 
     /// Sessions not shown in the main window (e.g. the quick terminal).
