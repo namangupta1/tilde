@@ -65,8 +65,10 @@ Distribution: ad-hoc signed `.app` packaged into a `.dmg` (`scripts/package.sh`)
 ## Subfolders ✅ (2026-11-21)
 - [x] Folders nest to any depth (`Folder.parentID`, folders still stored flat so tab lookups are unchanged; old workspace files load as top level)
 - [x] New Subfolder: folder right-click menu, File menu / ⌥⇧⌘N and ⌘K (in the current folder); inherits the parent's default directory
-- [x] Subfolders show below the folder's tabs as collapsible rows; ⌘1–9 / next-prev follow sidebar order
-- [x] Move Folder To ▸ (another folder or Top Level, subtree moves with it, no cycles); drag to reorder among siblings
+- [x] Subfolders show below the folder's tabs as flat, indented rows with a chevron (not DisclosureGroup, which drew
+      its first child over its label in the sidebar List); ⌘1–9 / next-prev follow sidebar order
+- [x] Move Folder To ▸ (another folder or Top Level, subtree moves with it, no cycles); drag reorders top-level folders,
+      and tabs can be dragged between subfolders
 - [x] Delete removes the subtree and closes its tabs; Move to Folder / ⌘K / snippet scope show "Parent › Child" paths
 - [x] Unit tests for the tree logic (`swift test`); verified in the app: create two levels, collapse, persist across relaunch
 - [ ] Not verified by hand: right-click menu items (Move Folder To, Delete) and inline rename on a subfolder — same code path as top-level folders

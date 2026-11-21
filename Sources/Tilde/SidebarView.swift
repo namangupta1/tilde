@@ -66,7 +66,25 @@ struct FolderSection: View {
     }
 }
 
-/// A folder's tabs followed by its subfolders.
+/// One row of a top-level folder's subfolder area: a subfolder header or one of its tabs.
+private enum NestedRow: Identifiable {
+    case header(Folder, depth: Int)
+    case tab(TerminalTab, folderID: UUID, index: Int, depth: Int)
+
+    var id: UUID {
+        switch self {
+        case .header(let f, _): return f.id
+        case .tab(let t, _, _, _): return t.id
+        }
+    }
+}
+
+/// Indent per nesting level in the sidebar.
+private let nestIndent: CGFloat = 14
+
+/// A top-level folder's tabs, then its subfolders as flat, indented rows.
+/// Flat rows (not DisclosureGroup) because a DisclosureGroup inside the macOS sidebar List
+/// can draw its first child on top of its own label.
 struct FolderContents: View {
     let folder: Folder
     @EnvironmentObject var store: WorkspaceStore
@@ -81,25 +99,69 @@ struct FolderContents: View {
             guard let first = from.first else { return }
             store.moveTab(folder.tabs[first].id, toFolder: folder.id, at: to)
         }
-        ForEach(store.childFolders(of: folder.id)) { sub in
-            SubfolderRow(folder: sub)
+
+        let rows = nestedRows
+        ForEach(rows) { row in
+            switch row {
+            case .header(let f, let depth):
+                SubfolderHeaderRow(folder: f)
+                    .padding(.leading, CGFloat(depth - 1) * nestIndent)
+                    .moveDisabled(true)
+                    .selectionDisabled(true)
+            case .tab(let t, _, _, let depth):
+                TabRow(tab: t)
+                    .padding(.leading, CGFloat(depth) * nestIndent)
+                    .tag(t.id)
+                    .draggable(t.id.uuidString)
+            }
         }
-        .onMove { store.moveFolders(parent: folder.id, from: $0, to: $1) }
+        .onMove { from, to in moveNestedTab(rows, from: from, to: to) }
+    }
+
+    /// Visible subfolder rows, depth-first; collapsed subfolders hide their contents.
+    private var nestedRows: [NestedRow] {
+        var out: [NestedRow] = []
+        func walk(_ parent: UUID, depth: Int) {
+            for f in store.childFolders(of: parent) {
+                out.append(.header(f, depth: depth))
+                guard f.isExpanded else { continue }
+                for (i, t) in f.tabs.enumerated() { out.append(.tab(t, folderID: f.id, index: i, depth: depth)) }
+                walk(f.id, depth: depth + 1)
+            }
+        }
+        walk(folder.id, depth: 1)
+        return out
+    }
+
+    /// Reorders a tab among the subfolder rows: it lands right after the row it's dropped below.
+    private func moveNestedTab(_ rows: [NestedRow], from: IndexSet, to: Int) {
+        guard let src = from.first, case .tab(let t, _, _, _) = rows[src], to != src, to != src + 1 else { return }
+        guard to > 0 else { store.moveTab(t.id, toFolder: folder.id); return }   // above the first subfolder
+        switch rows[to - 1] {
+        case .header(let f, _): store.moveTab(t.id, toFolder: f.id, at: 0)
+        case .tab(_, let fid, let i, _): store.moveTab(t.id, toFolder: fid, at: i + 1)
+        }
     }
 }
 
-/// Nested folder: a disclosure row inside its parent (recursive).
-struct SubfolderRow: View {
+/// Subfolder header row: disclosure chevron + the shared folder header.
+struct SubfolderHeaderRow: View {
     let folder: Folder
     @EnvironmentObject var store: WorkspaceStore
 
     var body: some View {
-        DisclosureGroup(isExpanded: Binding(
-            get: { folder.isExpanded },
-            set: { _ in store.toggleFolder(folder.id) }
-        )) {
-            FolderContents(folder: folder)
-        } label: {
+        HStack(spacing: 2) {
+            Button { store.toggleFolder(folder.id) } label: {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .rotationEffect(.degrees(folder.isExpanded ? 90 : 0))
+                    .frame(width: 12, height: 16)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(folder.isExpanded ? "Collapse" : "Expand")
+            .accessibilityLabel(folder.isExpanded ? "Collapse \(folder.name)" : "Expand \(folder.name)")
             FolderHeader(folder: folder)
         }
     }
