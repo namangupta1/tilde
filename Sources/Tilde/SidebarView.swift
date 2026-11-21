@@ -11,13 +11,14 @@ struct SidebarView: View {
                 get: { store.selectedHostID ?? store.workspace.selectedTabID },
                 set: { id in
                     guard let id else { return }
-                    if hostStore.host(id) != nil { store.selectHost(id) } else { store.select(id) }
+                    // Subfolder rows are list rows too; selecting one must not replace the selected tab.
+                    if hostStore.host(id) != nil { store.selectHost(id) } else if store.tab(id) != nil { store.select(id) }
                 }
             )) {
-                ForEach(store.workspace.folders) { folder in
+                ForEach(store.childFolders(of: nil)) { folder in
                     FolderSection(folder: folder)
                 }
-                .onMove { store.moveFolders(from: $0, to: $1) }
+                .onMove { store.moveFolders(parent: nil, from: $0, to: $1) }
                 HostsSection(editing: $store.editingHost)
             }
             .listStyle(.sidebar)
@@ -26,6 +27,7 @@ struct SidebarView: View {
             HStack(spacing: 4) {
                 Menu {
                     Button("New Empty Folder") { store.addFolder() }
+                    Button("New Subfolder in Current Folder") { store.addSubfolderToSelected() }
                     Button("Add Folder from Disk…") { store.addFolderFromDisk() }
                     TemplatesMenu(store: store)
                     Divider()
@@ -47,32 +49,69 @@ struct SidebarView: View {
     }
 }
 
+/// Top-level folder: a collapsible sidebar section.
 struct FolderSection: View {
     let folder: Folder
     @EnvironmentObject var store: WorkspaceStore
-    @State private var hovering = false
-    @State private var isTargeted = false
 
     var body: some View {
         Section(isExpanded: Binding(
             get: { folder.isExpanded },
             set: { _ in store.toggleFolder(folder.id) }
         )) {
-            ForEach(folder.tabs) { tab in
-                TabRow(tab: tab)
-                    .tag(tab.id)
-                    .draggable(tab.id.uuidString)
-            }
-            .onMove { from, to in
-                guard let first = from.first else { return }
-                store.moveTab(folder.tabs[first].id, toFolder: folder.id, at: to)
-            }
+            FolderContents(folder: folder)
         } header: {
-            header
+            FolderHeader(folder: folder)
         }
     }
+}
 
-    private var header: some View {
+/// A folder's tabs followed by its subfolders.
+struct FolderContents: View {
+    let folder: Folder
+    @EnvironmentObject var store: WorkspaceStore
+
+    var body: some View {
+        ForEach(folder.tabs) { tab in
+            TabRow(tab: tab)
+                .tag(tab.id)
+                .draggable(tab.id.uuidString)
+        }
+        .onMove { from, to in
+            guard let first = from.first else { return }
+            store.moveTab(folder.tabs[first].id, toFolder: folder.id, at: to)
+        }
+        ForEach(store.childFolders(of: folder.id)) { sub in
+            SubfolderRow(folder: sub)
+        }
+        .onMove { store.moveFolders(parent: folder.id, from: $0, to: $1) }
+    }
+}
+
+/// Nested folder: a disclosure row inside its parent (recursive).
+struct SubfolderRow: View {
+    let folder: Folder
+    @EnvironmentObject var store: WorkspaceStore
+
+    var body: some View {
+        DisclosureGroup(isExpanded: Binding(
+            get: { folder.isExpanded },
+            set: { _ in store.toggleFolder(folder.id) }
+        )) {
+            FolderContents(folder: folder)
+        } label: {
+            FolderHeader(folder: folder)
+        }
+    }
+}
+
+struct FolderHeader: View {
+    let folder: Folder
+    @EnvironmentObject var store: WorkspaceStore
+    @State private var hovering = false
+    @State private var isTargeted = false
+
+    var body: some View {
         HStack(spacing: 6) {
             Image(systemName: folder.directory == nil ? "folder" : "folder.fill")
                 .foregroundStyle(.secondary)
@@ -104,15 +143,28 @@ struct FolderSection: View {
         } isTargeted: { isTargeted = $0 }
         .contextMenu {
             Button("New Tab") { store.newTab(inFolder: folder.id) }
+            Button("New Subfolder") { store.addSubfolder(in: folder.id) }
             Divider()
             Button("Rename Folder") { store.renamingFolderID = folder.id }
+            Menu("Move Folder To") {
+                if folder.parentID != nil {
+                    Button("Top Level") { store.moveFolder(folder.id, toParent: nil) }
+                    Divider()
+                }
+                let excluded = store.folderAndDescendantIDs(folder.id)
+                ForEach(store.displayOrderedFolders.filter { !excluded.contains($0.id) && $0.id != folder.parentID }) { f in
+                    Button(store.folderPath(f.id)) { store.moveFolder(folder.id, toParent: f.id) }
+                }
+            }
             Button("Set Default Directory…") { store.chooseDirectory(forFolder: folder.id) }
             Button("Save as Template…") { store.promptSaveTemplate(folderID: folder.id) }
             if let d = folder.directory {
                 Button("Reveal in Finder") { NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: d) }
             }
             Divider()
-            Button("Delete Folder and Close Its Tabs", role: .destructive) { store.deleteFolder(folder.id) }
+            Button(store.childFolders(of: folder.id).isEmpty ? "Delete Folder and Close Its Tabs"
+                                                             : "Delete Folder, Subfolders and Their Tabs",
+                   role: .destructive) { store.deleteFolder(folder.id) }
         }
     }
 }
@@ -205,8 +257,8 @@ struct TabRow: View {
                 }
             }
             Menu("Move to Folder") {
-                ForEach(store.workspace.folders) { f in
-                    Button(f.name) { store.moveTab(tab.id, toFolder: f.id) }
+                ForEach(store.displayOrderedFolders) { f in
+                    Button(store.folderPath(f.id)) { store.moveTab(tab.id, toFolder: f.id) }
                 }
             }
             Button("Duplicate Tab") { store.duplicateTab(tab.id) }

@@ -232,7 +232,7 @@ struct SnippetEditor: View {
             Toggle("Run immediately (press Return)", isOn: $snippet.runImmediately)
             Picker("Only in folder", selection: $snippet.folderID) {
                 Text("Any").tag(UUID?.none)
-                ForEach(store.workspace.folders) { Text($0.name).tag(UUID?.some($0.id)) }
+                ForEach(store.displayOrderedFolders) { Text(store.folderPath($0.id)).tag(UUID?.some($0.id)) }
             }
             Picker("Only for host", selection: $snippet.hostID) {
                 Text("Any").tag(UUID?.none)

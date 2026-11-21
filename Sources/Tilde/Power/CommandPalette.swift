@@ -43,6 +43,7 @@ enum PaletteBuilder {
         let actions: [(String, String, String, @MainActor () -> Void)] = [
             ("New Tab", "plus.square", "⌘T", { store.newTab() }),
             ("New Folder", "folder.badge.plus", "⇧⌘N", { store.addFolder() }),
+            ("New Subfolder in Current Folder", "folder.badge.plus", "⌥⇧⌘N", { store.addSubfolderToSelected() }),
             ("New Tab in Git Worktree…", "arrow.triangle.branch", "⌥⌘T", { store.newWorktreeTab() }),
             ("Reopen Closed Tab", "arrow.uturn.backward", "⇧⌘T", { store.reopenClosedTab() }),
             ("Detach Tab", "rectangle.portrait.and.arrow.right", "", { if let t = store.selectedTab { store.detachTab(t.id) } }),
@@ -101,11 +102,11 @@ enum PaletteBuilder {
         }
 
         // Tabs
-        for f in store.workspace.folders {
+        for f in store.displayOrderedFolders {
             for t in f.tabs {
                 let needs = store.attention.contains(t.id)
                 out.append(PaletteItem(id: "tab:\(t.id)", title: store.displayTitle(t),
-                                       subtitle: f.name + (t.notes.isEmpty ? "" : " — " + (t.notes.split(separator: "\n").first.map(String.init) ?? "")),
+                                       subtitle: store.folderPath(f.id) + (t.notes.isEmpty ? "" : " — " + (t.notes.split(separator: "\n").first.map(String.init) ?? "")),
                                        icon: needs ? "bell.badge.fill" : "terminal", kind: "Tab",
                                        tint: needs ? .accentColor : t.color.color,
                                        action: { store.select(t.id) }))

@@ -62,6 +62,15 @@ Distribution: ad-hoc signed `.app` packaged into a `.dmg` (`scripts/package.sh`)
 - [ ] Not yet verified by hand: pressing the global hotkey itself, real drag-and-drop / paste gestures, right-click menu, fish (not installed)
 - [ ] Later: commands run before a reattach aren't in ⌘K history (replayed output is ignored on purpose)
 
+## Subfolders ✅ (2026-11-21)
+- [x] Folders nest to any depth (`Folder.parentID`, folders still stored flat so tab lookups are unchanged; old workspace files load as top level)
+- [x] New Subfolder: folder right-click menu, File menu / ⌥⇧⌘N and ⌘K (in the current folder); inherits the parent's default directory
+- [x] Subfolders show below the folder's tabs as collapsible rows; ⌘1–9 / next-prev follow sidebar order
+- [x] Move Folder To ▸ (another folder or Top Level, subtree moves with it, no cycles); drag to reorder among siblings
+- [x] Delete removes the subtree and closes its tabs; Move to Folder / ⌘K / snippet scope show "Parent › Child" paths
+- [x] Unit tests for the tree logic (`swift test`); verified in the app: create two levels, collapse, persist across relaunch
+- [ ] Not verified by hand: right-click menu items (Move Folder To, Delete) and inline rename on a subfolder — same code path as top-level folders
+
 ## Parity pass ✅ (2026-11-20) — see PARITY.md
 - [x] Verified in the app: zoom / equalize / pane cycling + directional focus, dimmed inactive panes, smart tab names,
       search all sessions (now searches as you type), reopen closed tab, detach + reattach (running job survives),

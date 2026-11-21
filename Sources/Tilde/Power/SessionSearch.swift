@@ -122,7 +122,7 @@ struct ShortcutsView: View {
     let onClose: () -> Void
 
     private let groups: [(String, [(String, String)])] = [
-        ("Tabs & folders", [("⌘T", "New tab"), ("⌥⌘T", "New tab in a git worktree"), ("⇧⌘N", "New folder"), ("⌘O", "Add folder from disk"),
+        ("Tabs & folders", [("⌘T", "New tab"), ("⌥⌘T", "New tab in a git worktree"), ("⇧⌘N", "New folder"), ("⌥⇧⌘N", "New subfolder"),("⌘O", "Add folder from disk"),
                             ("⌘R", "Rename tab"), ("⇧⌘I", "Toggle notes"), ("⌘1–9", "Go to tab"), ("⇧⌘[ / ⇧⌘]", "Previous / next tab"),
                             ("⌃⇧⌘[ / ⌃⇧⌘]", "Move tab up / down"), ("⇧⌘T", "Reopen closed tab"), ("⌥⌘W", "Close tab")]),
         ("Panes", [("⌘D / ⇧⌘D", "Split right / down"), ("⌘W", "Close pane"), ("⌘[ / ⌘]", "Previous / next pane"),

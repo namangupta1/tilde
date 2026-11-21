@@ -150,6 +150,9 @@ struct Folder: Codable, Identifiable, Hashable {
     var directory: String?
     var isExpanded = true
     var tabs: [TerminalTab] = []
+    /// Containing folder; nil = top level. Folders are stored flat in `Workspace.folders`
+    /// (siblings keep their relative order), so tab lookups don't need to recurse.
+    var parentID: UUID?
 }
 
 /// A tab taken out of the window whose shells keep running (File ▸ Detach Tab).
@@ -176,5 +179,111 @@ struct Workspace: Codable {
         folders = try c.decodeIfPresent([Folder].self, forKey: .folders) ?? []
         selectedTabID = try c.decodeIfPresent(UUID.self, forKey: .selectedTabID)
         detached = (try? c.decodeIfPresent([DetachedTab].self, forKey: .detached)) ?? []
+    }
+}
+
+// MARK: - Folder tree
+// Folders are stored flat; `parentID` links a subfolder to its parent. Siblings keep their
+// relative order in `folders`. These are pure so they can be unit-tested without the store.
+extension Workspace {
+    /// Direct children of `parentID` (nil = top level), in sidebar order.
+    /// A folder whose parent no longer exists is treated as top level.
+    func childFolders(of parentID: UUID?) -> [Folder] {
+        let ids = Set(folders.map(\.id))
+        return folders.filter { f in
+            guard let p = f.parentID, ids.contains(p) else { return parentID == nil }
+            return p == parentID
+        }
+    }
+
+    /// All folders depth-first, in the order the sidebar shows them (a folder, then its subfolders).
+    var displayOrderedFolders: [Folder] {
+        var out: [Folder] = [], seen = Set<UUID>()
+        func walk(_ parent: UUID?) {
+            for f in childFolders(of: parent) where seen.insert(f.id).inserted { out.append(f); walk(f.id) }
+        }
+        walk(nil)
+        return out
+    }
+
+    /// The folder and everything nested inside it.
+    func folderAndDescendantIDs(_ id: UUID) -> Set<UUID> {
+        var out: Set<UUID> = []
+        func walk(_ x: UUID) {
+            guard out.insert(x).inserted else { return }
+            for c in childFolders(of: x) { walk(c.id) }
+        }
+        walk(id)
+        return out
+    }
+
+    /// "Parent › Child" for menus and pickers.
+    func folderPath(_ id: UUID) -> String {
+        var names: [String] = [], cur: UUID? = id, seen = Set<UUID>()
+        while let c = cur, seen.insert(c).inserted, let f = folders.first(where: { $0.id == c }) {
+            names.insert(f.name, at: 0); cur = f.parentID
+        }
+        return names.joined(separator: " › ")
+    }
+
+    /// Index right after the last folder of `parentID`'s subtree (where a new last child goes).
+    private func endOfSubtree(_ parentID: UUID) -> Int? {
+        let family = folderAndDescendantIDs(parentID)
+        return folders.lastIndex { family.contains($0.id) }.map { $0 + 1 }
+    }
+
+    /// Adds `folder` as the last child of `parentID`. Returns false if the parent doesn't exist.
+    @discardableResult
+    mutating func insertSubfolder(_ folder: Folder, in parentID: UUID) -> Bool {
+        guard let pi = folders.firstIndex(where: { $0.id == parentID }), let at = endOfSubtree(parentID) else { return false }
+        var f = folder
+        f.parentID = parentID
+        folders.insert(f, at: at)
+        folders[pi].isExpanded = true
+        return true
+    }
+
+    /// Re-parents a folder (nil = top level) as the parent's last child, keeping its own subtree.
+    /// Refuses (returns false) to move a folder into itself or one of its own subfolders.
+    @discardableResult
+    mutating func reparentFolder(_ id: UUID, to parentID: UUID?) -> Bool {
+        guard folders.contains(where: { $0.id == id }) else { return false }
+        if let parentID {
+            guard folders.contains(where: { $0.id == parentID }),
+                  !folderAndDescendantIDs(id).contains(parentID) else { return false }
+        }
+        // Lift the folder and its subtree out (in their current order), then drop them in.
+        let subtree = folderAndDescendantIDs(id)
+        var moving = folders.filter { subtree.contains($0.id) }
+        folders.removeAll { subtree.contains($0.id) }
+        if let i = moving.firstIndex(where: { $0.id == id }) { moving[i].parentID = parentID }
+        if let parentID, let at = endOfSubtree(parentID) {
+            folders.insert(contentsOf: moving, at: at)
+            if let pi = folders.firstIndex(where: { $0.id == parentID }) { folders[pi].isExpanded = true }
+        } else {
+            folders.append(contentsOf: moving)
+        }
+        return true
+    }
+
+    /// Reorders the children of `parentID`; offsets refer to `childFolders(of: parentID)`.
+    /// Siblings go back into the slots they occupied, in the new order; other folders stay put.
+    mutating func reorderChildren(of parentID: UUID?, from source: IndexSet, to destination: Int) {
+        var siblings = childFolders(of: parentID).map(\.id)
+        siblings.move(fromOffsets: source, toOffset: destination)
+        let slots = Set(siblings)
+        var next = siblings.makeIterator()
+        let byID = Dictionary(folders.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        folders = folders.map { f in slots.contains(f.id) ? byID[next.next()!]! : f }
+    }
+
+    /// Removes a folder and all of its subfolders; returns what was removed.
+    @discardableResult
+    mutating func removeFolderTree(_ id: UUID) -> [Folder] {
+        guard folders.contains(where: { $0.id == id }) else { return [] }
+        let doomed = folderAndDescendantIDs(id)
+        let removed = folders.filter { doomed.contains($0.id) }
+        folders.removeAll { doomed.contains($0.id) }
+        return removed
     }
 }

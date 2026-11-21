@@ -78,7 +78,14 @@ final class WorkspaceStore: ObservableObject {
     }
 
     /// Flat tab order as displayed in the sidebar (used for ⌘1–9 and next/prev).
-    var orderedTabs: [TerminalTab] { workspace.folders.flatMap { $0.tabs } }
+    var orderedTabs: [TerminalTab] { displayOrderedFolders.flatMap { $0.tabs } }
+
+    // MARK: Folder tree (logic lives on Workspace; see Models.swift)
+
+    func childFolders(of parentID: UUID?) -> [Folder] { workspace.childFolders(of: parentID) }
+    var displayOrderedFolders: [Folder] { workspace.displayOrderedFolders }
+    func folderAndDescendantIDs(_ id: UUID) -> Set<UUID> { workspace.folderAndDescendantIDs(id) }
+    func folderPath(_ id: UUID) -> String { workspace.folderPath(id) }
 
     func displayTitle(_ tab: TerminalTab) -> String {
         if let c = tab.customTitle, !c.isEmpty { return c }
@@ -107,6 +114,27 @@ final class WorkspaceStore: ObservableObject {
         workspace.folders.append(f)
         workspace.selectedTabID = tab.id
         renamingFolderID = directory == nil ? f.id : nil
+    }
+
+    /// Creates a folder nested inside `parentID` (inherits its default directory) and starts renaming it.
+    func addSubfolder(in parentID: UUID, name: String = "New Folder") {
+        guard let parent = workspace.folders.first(where: { $0.id == parentID }) else { return }
+        var f = Folder(name: name, directory: parent.directory)
+        let tab = TerminalTab(directory: parent.directory)
+        f.tabs = [tab]
+        guard workspace.insertSubfolder(f, in: parentID) else { return }
+        workspace.selectedTabID = tab.id
+        renamingFolderID = f.id
+    }
+
+    /// New subfolder in the folder of the selected tab (top-level folder when nothing is selected).
+    func addSubfolderToSelected() {
+        if let i = selectedFolderIndex { addSubfolder(in: workspace.folders[i].id) } else { addFolder() }
+    }
+
+    /// Re-parents a folder (nil = top level). Refuses to move a folder into itself or its own subfolders.
+    func moveFolder(_ id: UUID, toParent parentID: UUID?) {
+        workspace.reparentFolder(id, to: parentID)
     }
 
     /// Opens a folder picker and creates a folder rooted at the chosen directory.
@@ -142,16 +170,20 @@ final class WorkspaceStore: ObservableObject {
         workspace.folders[i].isExpanded.toggle()
     }
 
+    /// Deletes the folder, its subfolders, and closes all their tabs.
     func deleteFolder(_ id: UUID) {
-        guard let i = workspace.folders.firstIndex(where: { $0.id == id }) else { return }
-        for t in workspace.folders[i].tabs { for p in t.root.allPanes { TerminalRegistry.shared.close(p.id) } }
-        let removedSelection = workspace.folders[i].tabs.contains { $0.id == workspace.selectedTabID }
-        workspace.folders.remove(at: i)
+        var ws = workspace
+        let removed = ws.removeFolderTree(id)
+        guard !removed.isEmpty else { return }
+        for f in removed { for t in f.tabs { for p in t.root.allPanes { TerminalRegistry.shared.close(p.id) } } }
+        let removedSelection = removed.contains { $0.tabs.contains { $0.id == ws.selectedTabID } }
+        workspace = ws
         if removedSelection { workspace.selectedTabID = orderedTabs.first?.id }
     }
 
-    func moveFolders(from source: IndexSet, to destination: Int) {
-        workspace.folders.move(fromOffsets: source, toOffset: destination)
+    /// Reorders the children of `parentID`; offsets refer to `childFolders(of: parentID)`.
+    func moveFolders(parent parentID: UUID? = nil, from source: IndexSet, to destination: Int) {
+        workspace.reorderChildren(of: parentID, from: source, to: destination)
     }
 
     // MARK: Tabs

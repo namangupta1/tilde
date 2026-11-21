@@ -181,6 +181,7 @@ struct TildeCommands: Commands {
             Button("New Tab") { store.newTab() }.keyboardShortcut("t")
             Button("New Tab in Git Worktree…") { store.newWorktreeTab() }.keyboardShortcut("t", modifiers: [.command, .option])
             Button("New Folder") { store.addFolder() }.keyboardShortcut("n", modifiers: [.command, .shift])
+            Button("New Subfolder") { store.addSubfolderToSelected() }.keyboardShortcut("n", modifiers: [.command, .shift, .option])
             Button("Add Folder from Disk…") { store.addFolderFromDisk() }.keyboardShortcut("o")
             TemplatesMenu(store: store)
             Button("Save Folder as Template…") {

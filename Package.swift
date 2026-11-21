@@ -18,6 +18,12 @@ let package = Package(
         .executableTarget(
             name: "tilde-session",
             path: "Sources/tilde-session"
+        ),
+        .testTarget(
+            name: "TildeTests",
+            dependencies: ["Tilde"],
+            path: "Tests/TildeTests",
+            swiftSettings: [.swiftLanguageMode(.v5)]
         )
     ]
 )
