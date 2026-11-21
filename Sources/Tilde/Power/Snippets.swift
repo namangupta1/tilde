@@ -130,7 +130,7 @@ struct SnippetFillSheet: View {
                         .textFieldStyle(.roundedBorder)
                         .font(.body.monospaced())
                         .focused($focused, equals: p.name)
-                        .onSubmit { onDone(s.filled(values), true) }
+                        .onSubmit { submit(from: p.name, s) }
                 }
             }
             Text(s.filled(values))
@@ -142,13 +142,30 @@ struct SnippetFillSheet: View {
             HStack {
                 Spacer()
                 Button("Cancel") { onDone(nil, false) }.keyboardShortcut(.cancelAction)
-                Button("Insert") { onDone(s.filled(values), false) }
-                Button("Run") { onDone(s.filled(values), true) }.keyboardShortcut(.defaultAction)
+                // The snippet's own setting picks the default (Return) action.
+                if s.runImmediately {
+                    Button("Insert") { onDone(s.filled(values), false) }
+                    Button("Run") { onDone(s.filled(values), true) }.keyboardShortcut(.defaultAction)
+                } else {
+                    Button("Run") { onDone(s.filled(values), true) }
+                    Button("Insert") { onDone(s.filled(values), false) }.keyboardShortcut(.defaultAction)
+                }
             }
         }
         .padding(20)
         .frame(width: 480)
         .onAppear { focused = s.placeholders.first?.name }
+    }
+
+    /// Return in a field moves to the next field; only the last field finishes,
+    /// running or inserting per the snippet's "Run immediately" setting.
+    private func submit(from name: String, _ s: Snippet) {
+        let names = s.placeholders.map(\.name)
+        if let i = names.firstIndex(of: name), i + 1 < names.count {
+            focused = names[i + 1]
+        } else {
+            onDone(s.filled(values), s.runImmediately)
+        }
     }
 }
 
@@ -190,17 +207,23 @@ struct SnippetManager: View {
             }
             Divider()
             HStack {
-                Button { add() } label: { Image(systemName: "plus") }
+                Button { add() } label: { Label("Add Snippet", systemImage: "plus").labelStyle(.iconOnly) }
+                    .help("Add Snippet")
                 Button {
+                    let name = snippets.snippets.first { $0.id == selection }?.name ?? ""
+                    guard Confirm.ask("Delete snippet “\(name.isEmpty ? "Untitled" : name)”?", "This can’t be undone.", confirm: "Delete") else { return }
                     snippets.snippets.removeAll { $0.id == selection }
                     selection = nil
-                } label: { Image(systemName: "minus") }.disabled(selection == nil)
+                } label: { Label("Delete Snippet", systemImage: "minus").labelStyle(.iconOnly) }
+                    .help("Delete Snippet")
+                    .disabled(selection == nil)
                 Spacer()
                 Button("Done", action: onClose).keyboardShortcut(.defaultAction)
             }
             .padding(10)
         }
         .frame(width: 680, height: 440)
+        .onExitCommand(perform: onClose)
         .onAppear { selection = selection ?? snippets.snippets.first?.id }
     }
 

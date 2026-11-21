@@ -46,7 +46,7 @@ struct MultiHostRunView: View {
                         Toggle(isOn: Binding(get: { selected.contains(h.id) },
                                              set: { if $0 { selected.insert(h.id) } else { selected.remove(h.id) } })) {
                             HStack(spacing: 4) {
-                                Text(h.name)
+                                Text(h.name).lineLimit(1).truncationMode(.middle)
                                 if h.isProduction { ProdBadge() }
                             }
                         }
@@ -60,7 +60,6 @@ struct MultiHostRunView: View {
                             .textFieldStyle(.roundedBorder)
                             .font(.body.monospaced())
                             .focused($commandFocused)
-                            .onSubmit(run)
                         Button(runLabel, action: run)
                             .keyboardShortcut(.defaultAction)
                             .disabled(selected.isEmpty || command.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -81,12 +80,26 @@ struct MultiHostRunView: View {
             }
             HStack {
                 Spacer()
-                Button("Done", action: onClose).keyboardShortcut(.cancelAction)
+                Button("Done", action: close).keyboardShortcut(.cancelAction)
             }
         }
         .padding(18)
         .frame(width: 760, height: 480)
+        .onExitCommand(perform: close)
         .onAppear { commandFocused = true }
+    }
+
+    private var isRunning: Bool { results.contains { $0.running } }
+
+    /// Closing while commands are still running hides their results, so ask first.
+    private func close() {
+        if isRunning {
+            let n = results.filter(\.running).count
+            guard Confirm.ask("Close while \(Confirm.plural(n, "host")) still running?",
+                              "The command keeps running on those hosts, but you won’t see the results.",
+                              confirm: "Close") else { return }
+        }
+        onClose()
     }
 
     private var hasProd: Bool { hostStore.hosts.contains { selected.contains($0.id) && $0.isProduction } }
@@ -102,7 +115,7 @@ struct MultiHostRunView: View {
                     if r.running { ProgressView().controlSize(.small) }
                     else { Image(systemName: r.status == 0 ? "checkmark.circle.fill" : "xmark.circle.fill")
                             .foregroundStyle(r.status == 0 ? .green : .red) }
-                    Text(r.name).fontWeight(.medium)
+                    Text(r.name).fontWeight(.medium).lineLimit(1).truncationMode(.middle)
                     if !r.running {
                         Text(r.status == 0 ? Notifier.format(r.duration) : "exit \(r.status.map(String.init) ?? "?") · \(Notifier.format(r.duration))")
                             .font(.caption).foregroundStyle(.secondary)

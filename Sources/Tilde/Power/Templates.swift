@@ -141,9 +141,13 @@ struct TemplateManager: View {
             Divider()
             HStack {
                 Button {
+                    let name = templates.template(selection ?? UUID())?.name ?? ""
+                    guard Confirm.ask("Delete template “\(name)”?", "This can’t be undone. Folders opened from it are not affected.", confirm: "Delete") else { return }
                     templates.templates.removeAll { $0.id == selection }
                     selection = nil
-                } label: { Image(systemName: "minus") }.disabled(selection == nil)
+                } label: { Label("Delete Template", systemImage: "minus").labelStyle(.iconOnly) }
+                    .help("Delete Template")
+                    .disabled(selection == nil)
                 Spacer()
                 Button("Open") {
                     if let t = templates.template(selection ?? UUID()) { onClose(); store.openTemplate(t) }
@@ -154,6 +158,7 @@ struct TemplateManager: View {
             .padding(10)
         }
         .frame(width: 700, height: 460)
+        .onExitCommand(perform: onClose)
         .onAppear { selection = selection ?? templates.templates.first?.id }
     }
 }

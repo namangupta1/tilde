@@ -60,8 +60,8 @@ enum PaletteBuilder {
             ("Rename Tab", "pencil", "⌘R", { NotificationCenter.default.post(name: .renameCurrentTab, object: nil) }),
             ("Find in Scrollback", "magnifyingglass", "⌘F", { store.activeSession?.showFind() }),
             ("Jump to Tab Needing Attention", "bell.badge", "⌘J", { store.jumpToAttention() }),
-            ("Previous Prompt", "arrow.up.to.line", "⌘↑", { store.activeSession?.jumpToPrompt(up: true) }),
-            ("Next Prompt", "arrow.down.to.line", "⌘↓", { store.activeSession?.jumpToPrompt(up: false) }),
+            ("Previous Prompt", "arrow.up.to.line", "⇧⌘↑", { store.activeSession?.jumpToPrompt(up: true) }),
+            ("Next Prompt", "arrow.down.to.line", "⇧⌘↓", { store.activeSession?.jumpToPrompt(up: false) }),
             ("Restart / Reconnect Pane", "arrow.clockwise", "⇧⌘R", { store.restartActivePane() }),
             ("New Host…", "server.rack", "⇧⌘H", { store.editingHost = Host.blank() }),
             ("Import Hosts from ~/.ssh/config", "square.and.arrow.down", "", { hosts.importSSHConfig(); HostMonitor.shared.refreshAll() }),
@@ -169,17 +169,24 @@ struct CommandPalette: View {
         if query.trimmingCharacters(in: .whitespaces).isEmpty {
             // Empty query: tabs needing attention, recent commands, then tabs, then actions.
             let order = ["Tab", "Recent", "Snippet", "Template", "Action", "Host", "Host command", "Folder"]
+            func rank(_ item: PaletteItem) -> Int {
+                if item.kind == "Tab", let id = UUID(uuidString: String(item.id.dropFirst(4))), store.attention.contains(id) { return -1 }
+                return order.firstIndex(of: item.kind) ?? 9
+            }
+            // Stable: equal ranks keep their built order.
             return all.filter { $0.kind != "Recent" || !$0.id.hasPrefix("save:") }
-                .sorted { (order.firstIndex(of: $0.kind) ?? 9) < (order.firstIndex(of: $1.kind) ?? 9) }
-                .prefix(60).map { $0 }
+                .enumerated()
+                .sorted { (rank($0.element), $0.offset) < (rank($1.element), $1.offset) }
+                .prefix(60).map(\.element)
         }
         return all.compactMap { item -> (PaletteItem, Int)? in
             guard let s = Fuzzy.score(query, item.title + " " + item.subtitle) else { return nil }
             let titleBonus = Fuzzy.score(query, item.title) != nil ? 20 : 0
             return (item, s + titleBonus)
         }
-        .sorted { $0.1 > $1.1 }
-        .prefix(60).map { $0.0 }
+        .enumerated()
+        .sorted { ($0.element.1, -$0.offset) > ($1.element.1, -$1.offset) }
+        .prefix(60).map { $0.element.0 }
     }
 
     var body: some View {
@@ -201,10 +208,14 @@ struct CommandPalette: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(spacing: 2) {
-                        ForEach(items) { item in
-                            let i = items.firstIndex { $0.id == item.id } ?? 0
+                        ForEach(Array(items.enumerated()), id: \.element.id) { i, item in
                             row(item, isSelected: i == selected)
+                                .id(item.id)
                                 .onTapGesture { selected = i; run(items) }
+                                .onHover { if $0 { selected = i } }
+                                .accessibilityElement(children: .combine)
+                                .accessibilityAddTraits(.isButton)
+                                .accessibilityAddTraits(i == selected ? .isSelected : [])
                         }
                         if items.isEmpty {
                             Text("No matches").foregroundStyle(.secondary).padding(20)
@@ -222,6 +233,7 @@ struct CommandPalette: View {
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(nsColor: .separatorColor), lineWidth: 0.5))
         .shadow(color: .black.opacity(0.25), radius: 24, y: 10)
+        .onExitCommand(perform: close)   // Escape works even when the search field lost focus
         .onAppear {
             all = PaletteBuilder.items(store: store, hosts: hosts, snippets: snippets, theme: theme)
             focused = true

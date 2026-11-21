@@ -13,7 +13,7 @@ struct DetailView: View {
                 if store.isProduction(tab), let h = store.host(for: tab) {
                     HStack(spacing: 6) {
                         Image(systemName: "exclamationmark.triangle.fill")
-                        Text("PRODUCTION · \(h.name)").fontWeight(.semibold)
+                        Text("PRODUCTION · \(h.name)").fontWeight(.semibold).lineLimit(1).truncationMode(.tail)
                         Spacer()
                     }
                     .font(.caption)
@@ -31,7 +31,7 @@ struct DetailView: View {
             VStack(spacing: 12) {
                 Image(systemName: "terminal").font(.system(size: 40)).foregroundStyle(.secondary)
                 Text("No tab open").font(.title3)
-                Button("New Tab  ⌘T") { store.newTab() }
+                Button("New Tab (⌘T)") { store.newTab() }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -59,11 +59,14 @@ struct TabHeader: View {
                     .onSubmit { commitTitle(); NotificationCenter.default.post(name: .focusActiveTerminal, object: nil) }
                     .onChange(of: titleFocused) { _, f in if !f { commitTitle() } }
                     .help("Name this tab (⌘R)")
-                Spacer()
+                    .frame(minWidth: 120)
+                    .layoutPriority(1)   // badges below give way first in a narrow window
+                Spacer(minLength: 8)
                 if tab.broadcast && tab.root.allPanes.count > 1 {
                     Button { store.toggleBroadcast() } label: {
                         Label("Typing into \(tab.root.allPanes.count) panes", systemImage: "dot.radiowaves.left.and.right")
                             .font(.caption.weight(.semibold))
+                            .lineLimit(1)
                             .padding(.horizontal, 7).padding(.vertical, 2)
                             .background(Capsule().fill(Color.orange.opacity(0.2)))
                             .foregroundStyle(.orange)
@@ -74,6 +77,7 @@ struct TabHeader: View {
                 if let agent = store.agentState(tab) {
                     Label("Claude: \(agent.label)", systemImage: agent.symbol)
                         .font(.caption.weight(.semibold))
+                        .lineLimit(1)
                         .foregroundStyle(agent.color)
                 }
                 if tab.zoomedPaneID != nil {
@@ -89,7 +93,7 @@ struct TabHeader: View {
                     Button { store.selectHost(h.id) } label: {
                         HStack(spacing: 4) {
                             StatusDot(status: HostMonitor.shared.status(h.id), size: 6)
-                            Text(h.target).font(.caption.monospaced())
+                            Text(h.target).font(.caption.monospaced()).lineLimit(1).truncationMode(.middle)
                         }
                     }
                     .buttonStyle(.borderless)
@@ -143,7 +147,7 @@ struct LastCommandBadge: View {
         HStack(spacing: 4) {
             Image(systemName: ok ? "checkmark.circle.fill" : "xmark.circle.fill")
                 .foregroundStyle(ok ? .green : .red)
-            Text(record.command).lineLimit(1).truncationMode(.tail).frame(maxWidth: 180, alignment: .leading)
+            Text(record.command).lineLimit(1).truncationMode(.tail).frame(minWidth: 40, maxWidth: 180, alignment: .leading)
             Text(Notifier.format(record.duration ?? 0)).foregroundStyle(.tertiary)
         }
         .font(.caption.monospaced())

@@ -31,11 +31,11 @@ struct HostsSection: View {
                     Menu {
                         Button("New Host…") { editing = Host.blank() }
                         Button("Import from ~/.ssh/config") { hostStore.importSSHConfig(); HostMonitor.shared.refreshAll() }
-                    } label: { Image(systemName: "plus") }
+                    } label: { Label("Add Host", systemImage: "plus").labelStyle(.iconOnly) }
                         .menuStyle(.borderlessButton)
                         .menuIndicator(.hidden)
                         .fixedSize()
-                        .help("Add host")
+                        .help("Add a host or import from ~/.ssh/config")
                 }
             }
             .contentShape(Rectangle())
@@ -87,8 +87,9 @@ struct HostRow: View {
     @EnvironmentObject var monitor: HostMonitor
 
     var body: some View {
-        HStack(spacing: 7) {
+        HStack(spacing: 6) {
             StatusDot(status: monitor.status(host.id), size: 7)
+                .frame(width: 13, height: 13)   // same indicator column as tab rows
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 4) {
                     Text(host.name.isEmpty ? host.address : host.name).lineLimit(1)
@@ -124,7 +125,10 @@ struct HostMenu: View {
         Button("Copy SSH Command") { copy(SSH.commandLine(host)) }
         Button("Disconnect Shared Connection") { HostMonitor.shared.disconnect(host.id) }
         Divider()
-        Button("Delete Host", role: .destructive) {
+        Button("Delete Host…", role: .destructive) {
+            guard Confirm.ask("Delete host “\(host.name.isEmpty ? host.address : host.name)”?",
+                              "Its saved details, quick commands and environment variables are removed. Open SSH tabs stay open.",
+                              confirm: "Delete") else { return }
             if store.selectedHostID == host.id { store.selectedHostID = nil }
             HostStore.shared.delete(host.id)
         }
@@ -188,7 +192,7 @@ struct HostDetailView: View {
                 .foregroundStyle(host.isProduction ? Color.red : Color.accentColor)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
-                    Text(host.name.isEmpty ? host.address : host.name).font(.title2.weight(.semibold))
+                    Text(host.name.isEmpty ? host.address : host.name).font(.title2.weight(.semibold)).lineLimit(1).truncationMode(.middle)
                     if host.isProduction { ProdBadge() }
                 }
                 HStack(spacing: 6) {
@@ -206,9 +210,10 @@ struct HostDetailView: View {
                 .tint(host.isProduction ? .red : .accentColor)
             Menu {
                 HostMenu(host: host, editing: $editing)
-            } label: { Image(systemName: "ellipsis.circle") }
+            } label: { Label("More Actions", systemImage: "ellipsis.circle").labelStyle(.iconOnly) }
                 .menuStyle(.borderlessButton)
                 .fixedSize()
+                .help("More actions for this host")
         }
     }
 
@@ -421,8 +426,11 @@ struct HostEditor: View {
                         HStack {
                             TextField("Name", text: $c.name).frame(width: 140)
                             TextField("Command", text: $c.command).font(.body.monospaced())
-                            Button { host.commands.removeAll { $0.id == c.id } } label: { Image(systemName: "minus.circle") }
-                                .buttonStyle(.borderless)
+                            Button { host.commands.removeAll { $0.id == c.id } } label: {
+                                Label("Remove Command", systemImage: "minus.circle").labelStyle(.iconOnly)
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Remove command")
                         }
                     }
                     Button { host.commands.append(QuickCommand(name: "", command: "")) } label: { Label("Add command", systemImage: "plus") }
@@ -488,8 +496,11 @@ struct KeyValueEditor: View {
             HStack {
                 TextField(keyPlaceholder, text: $kv.key).font(.body.monospaced()).frame(width: 160)
                 TextField(valuePlaceholder, text: $kv.value).font(.body.monospaced())
-                Button { items.removeAll { $0.id == kv.id } } label: { Image(systemName: "minus.circle") }
-                    .buttonStyle(.borderless)
+                Button { items.removeAll { $0.id == kv.id } } label: {
+                    Label("Remove", systemImage: "minus.circle").labelStyle(.iconOnly)
+                }
+                .buttonStyle(.borderless)
+                .help("Remove")
             }
         }
         Button { items.append(KeyValue(key: "", value: "")) } label: { Label("Add variable", systemImage: "plus") }

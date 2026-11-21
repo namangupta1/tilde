@@ -65,11 +65,11 @@ struct TildeApp: App {
             }
             .toolbar {
                 ToolbarItemGroup(placement: .primaryAction) {
-                    Button { store.split(.horizontal) } label: { Image(systemName: "rectangle.split.2x1") }
+                    Button { store.split(.horizontal) } label: { Label("Split Right", systemImage: "rectangle.split.2x1") }
                         .help("Split Right (⌘D)")
-                    Button { store.split(.vertical) } label: { Image(systemName: "rectangle.split.1x2") }
+                    Button { store.split(.vertical) } label: { Label("Split Down", systemImage: "rectangle.split.1x2") }
                         .help("Split Down (⇧⌘D)")
-                    Button { store.newTab() } label: { Image(systemName: "plus") }
+                    Button { store.newTab() } label: { Label("New Tab", systemImage: "plus") }
                         .help("New Tab (⌘T)")
                 }
             }
@@ -110,9 +110,18 @@ struct TildeApp: App {
                 if let t = store.toast {
                     Text(t)
                         .font(.callout)
+                        .lineLimit(3)
+                        .multilineTextAlignment(.center)
                         .padding(.horizontal, 14).padding(.vertical, 8)
-                        .background(.regularMaterial, in: Capsule())
-                        .overlay(Capsule().stroke(Color(nsColor: .separatorColor), lineWidth: 0.5))
+                        .frame(maxWidth: 480)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(nsColor: .separatorColor), lineWidth: 0.5))
+                        .contentShape(Rectangle())
+                        .onTapGesture { store.toast = nil }
+                        .help("Click to dismiss")
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityHint("Dismisses the message")
                         .shadow(color: .black.opacity(0.2), radius: 10, y: 4)
                         .padding(.bottom, 18)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -199,11 +208,11 @@ struct TildeCommands: Commands {
             Button("Detached Sessions…") { store.showDetached = true }
             Button("Reopen Closed Tab") { store.reopenClosedTab() }.keyboardShortcut("t", modifiers: [.command, .shift])
             Divider()
-            Button("Export Scrollback…") { if let t = store.selectedTab { store.exportTranscript(t.id) } }
-                .keyboardShortcut("s", modifiers: [.command, .shift])
+            Button("Export Transcript…") { if let t = store.selectedTab { store.exportTranscript(t.id) } }
+                .keyboardShortcut("e", modifiers: [.command, .shift])
             Divider()
             Button("Close Pane") { store.closeActivePane() }.keyboardShortcut("w")
-            Button("Close Tab") { if let t = store.selectedTab { store.closeTab(t.id) } }
+            Button("Close Tab") { if let t = store.selectedTab { store.closeTabConfirmingIfBusy(t.id) } }
                 .keyboardShortcut("w", modifiers: [.command, .option])
         }
         CommandGroup(after: .pasteboard) {
@@ -222,9 +231,7 @@ struct TildeCommands: Commands {
         }
         CommandMenu("Go") {
             Button("Command Palette…") { store.showPalette.toggle() }.keyboardShortcut("k")
-            Button("Command Palette (alt)") { store.showPalette.toggle() }.keyboardShortcut("p", modifiers: [.command, .shift])
             Button("Jump to Tab Needing Attention") { store.jumpToAttention() }.keyboardShortcut("j")
-            Divider()
             Divider()
             Button("Previous Pane") { store.cyclePane(-1) }.keyboardShortcut("[")
             Button("Next Pane") { store.cyclePane(1) }.keyboardShortcut("]")
@@ -235,8 +242,8 @@ struct TildeCommands: Commands {
             Button("Zoom Pane") { store.toggleZoom() }.keyboardShortcut(.return, modifiers: [.command, .shift])
             Button("Equalize Panes") { store.equalizePanes() }.keyboardShortcut("=", modifiers: [.command, .control])
             Divider()
-            Button("Previous Prompt") { store.activeSession?.jumpToPrompt(up: true) }.keyboardShortcut(.upArrow)
-            Button("Next Prompt") { store.activeSession?.jumpToPrompt(up: false) }.keyboardShortcut(.downArrow)
+            Button("Previous Prompt") { store.activeSession?.jumpToPrompt(up: true) }.keyboardShortcut(.upArrow, modifiers: [.command, .shift])
+            Button("Next Prompt") { store.activeSession?.jumpToPrompt(up: false) }.keyboardShortcut(.downArrow, modifiers: [.command, .shift])
             Divider()
             Button("Snippets…") { store.showSnippets = true }.keyboardShortcut("s", modifiers: [.command, .option])
             Button("Quick Terminal") { QuickTerminal.shared.toggle() }
@@ -257,8 +264,6 @@ struct TildeCommands: Commands {
             Toggle("Broadcast Input to All Panes", isOn: Binding(
                 get: { store.selectedTab?.broadcast ?? false }, set: { _ in store.toggleBroadcast() }))
                 .keyboardShortcut("i", modifiers: [.command, .option])
-            Button("Export Transcript…") { if let t = store.selectedTab { store.exportTranscript(t.id) } }
-                .keyboardShortcut("e", modifiers: [.command, .shift])
             Button("Restart / Reconnect Pane") { store.restartActivePane() }.keyboardShortcut("r", modifiers: [.command, .shift])
             Divider()
             Button("Move Tab Up") { store.moveSelectedTab(-1) }.keyboardShortcut("[", modifiers: [.command, .shift, .control])

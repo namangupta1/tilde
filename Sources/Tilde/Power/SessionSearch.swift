@@ -19,6 +19,7 @@ struct SessionSearchView: View {
     @State private var regex = false
     @State private var hits: [Hit] = []
     @State private var searched = false
+    @State private var selected = 0
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -28,7 +29,10 @@ struct SessionSearchView: View {
                 TextField("Search output in all open tabs", text: $query)
                     .textFieldStyle(.plain).font(.title3)
                     .focused($focused)
-                    .onSubmit(search)
+                    // ↑/↓ pick a match, Return opens it (searches first if nothing is listed yet).
+                    .onSubmit { if hits.indices.contains(selected) { open(hits[selected]) } else { search() } }
+                    .onKeyPress(.downArrow) { selected = min(selected + 1, max(hits.count - 1, 0)); return .handled }
+                    .onKeyPress(.upArrow) { selected = max(selected - 1, 0); return .handled }
                     .task(id: query) {
                         // Search as you type, after a short pause.
                         try? await Task.sleep(for: .milliseconds(query.count < 3 ? 400 : 200))
@@ -38,22 +42,29 @@ struct SessionSearchView: View {
                 Toggle(".*", isOn: $regex).toggleStyle(.button).help("Regular expression")
             }
             Divider()
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 2) {
-                    ForEach(hits) { h in
-                        Button { open(h) } label: {
-                            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                                Text(h.tabTitle).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                                    .frame(width: 120, alignment: .leading).lineLimit(1)
-                                Text(h.line).font(.system(.callout, design: .monospaced)).lineLimit(1)
-                                Spacer(minLength: 0)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 2) {
+                        ForEach(Array(hits.enumerated()), id: \.element.id) { i, h in
+                            Button { open(h) } label: {
+                                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                    Text(h.tabTitle).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                                        .frame(width: 120, alignment: .leading).lineLimit(1)
+                                        .help(h.tabTitle)
+                                    Text(h.line).font(.system(.callout, design: .monospaced)).lineLimit(1)
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.vertical, 4).padding(.horizontal, 6)
+                                .background(RoundedRectangle(cornerRadius: 5).fill(i == selected ? Color.accentColor.opacity(0.22) : .clear))
+                                .contentShape(Rectangle())
                             }
-                            .padding(.vertical, 4).padding(.horizontal, 6)
-                            .contentShape(Rectangle())
+                            .buttonStyle(.plain)
+                            .id(h.id)
+                            .onHover { if $0 { selected = i } }
                         }
-                        .buttonStyle(.plain)
                     }
                 }
+                .onChange(of: selected) { _, s in if hits.indices.contains(s) { proxy.scrollTo(hits[s].id) } }
             }
             .frame(height: 320)
             .overlay {
@@ -98,6 +109,7 @@ struct SessionSearchView: View {
             }
         }
         hits = out
+        selected = 0
         searched = true
     }
 
@@ -121,20 +133,21 @@ struct SessionSearchView: View {
 struct ShortcutsView: View {
     let onClose: () -> Void
 
-    private let groups: [(String, [(String, String)])] = [
-        ("Tabs & folders", [("⌘T", "New tab"), ("⌥⌘T", "New tab in a git worktree"), ("⇧⌘N", "New folder"), ("⌥⇧⌘N", "New subfolder"),("⌘O", "Add folder from disk"),
+    /// Keep in step with the menu bindings in TildeApp.swift.
+    private var groups: [(String, [(String, String)])] { [
+        ("Tabs & folders", [("⌘T", "New tab"), ("⌥⌘T", "New tab in a git worktree"), ("⇧⌘N", "New folder"), ("⌥⇧⌘N", "New subfolder"), ("⌘O", "Add folder from disk"),
                             ("⌘R", "Rename tab"), ("⇧⌘I", "Toggle notes"), ("⌘1–9", "Go to tab"), ("⇧⌘[ / ⇧⌘]", "Previous / next tab"),
-                            ("⌃⇧⌘[ / ⌃⇧⌘]", "Move tab up / down"), ("⇧⌘T", "Reopen closed tab"), ("⌥⌘W", "Close tab")]),
+                            ("⌃⇧⌘[ / ⌃⇧⌘]", "Move tab up / down"), ("⇧⌘T", "Reopen closed tab"), ("⌥⌘W", "Close tab"), ("⌃⌘S", "Show / hide sidebar")]),
         ("Panes", [("⌘D / ⇧⌘D", "Split right / down"), ("⌘W", "Close pane"), ("⌘[ / ⌘]", "Previous / next pane"),
                    ("⌥⌘ arrows", "Move focus between panes"), ("⇧⌘↩", "Zoom pane"), ("⌃⌘=", "Equalize panes"),
                    ("⌥⌘I", "Broadcast input to all panes"), ("⇧⌘R", "Restart / reconnect pane")]),
-        ("Output", [("⌘F / ⌘G / ⇧⌘G", "Find, next, previous"), ("⇧⌘F", "Search all sessions"), ("⌘↑ / ⌘↓", "Previous / next prompt"),
+        ("Output", [("⌘F / ⌘G / ⇧⌘G", "Find, next, previous"), ("⇧⌘F", "Search all sessions"), ("⇧⌘↑ / ⇧⌘↓", "Previous / next prompt"),
                     ("⇧⌘C", "Copy last command output"), ("⇧⌘O", "Open selected file in editor"), ("⌥⌘V", "Paste image as file path"),
-                    ("⌘L / ⌥⌘K", "Clear screen / scrollback"), ("⇧⌘S", "Export scrollback")]),
-        ("Go", [("⌘K / ⇧⌘P", "Command palette"), ("⌘J", "Next tab needing you"), ("⌥⌘S", "Snippets"),
-                ("⌥⌘H", "Run command on hosts"), ("⇧⌘H", "New host"), ("⌃` (default)", "Quick terminal from any app")]),
+                    ("⌘L / ⌥⌘K", "Clear screen / scrollback"), ("⇧⌘E", "Export transcript")]),
+        ("Go", [("⌘K", "Command palette"), ("⌘J", "Next tab needing you"), ("⌥⌘S", "Snippets"),
+                ("⌥⌘H", "Run command on hosts"), ("⇧⌘H", "New host"), (QuickTerminal.hotkey.label, "Quick terminal from any app (set in Settings)")]),
         ("App", [("⌘= / ⌘- / ⌘0", "Text size"), ("⌘,", "Settings"), ("⌥⌘Q", "Quit and end all shells"), ("⌘/", "This list")]),
-    ]
+    ] }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -159,5 +172,6 @@ struct ShortcutsView: View {
         }
         .padding(18)
         .frame(width: 680, height: 520)
+        .onExitCommand(perform: onClose)
     }
 }

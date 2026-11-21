@@ -175,7 +175,12 @@ final class WorkspaceStore: ObservableObject {
         var ws = workspace
         let removed = ws.removeFolderTree(id)
         guard !removed.isEmpty else { return }
-        for f in removed { for t in f.tabs { for p in t.root.allPanes { TerminalRegistry.shared.close(p.id) } } }
+        for f in removed {
+            for (i, t) in f.tabs.enumerated() {
+                rememberClosed(t, folderID: f.id, index: i)   // ⇧⌘T reopens them (in the selected folder)
+                for p in t.root.allPanes { TerminalRegistry.shared.close(p.id) }
+            }
+        }
         let removedSelection = removed.contains { $0.tabs.contains { $0.id == ws.selectedTabID } }
         workspace = ws
         if removedSelection { workspace.selectedTabID = orderedTabs.first?.id }

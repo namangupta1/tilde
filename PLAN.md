@@ -73,6 +73,21 @@ Distribution: ad-hoc signed `.app` packaged into a `.dmg` (`scripts/package.sh`)
 - [x] Unit tests for the tree logic (`swift test`); verified in the app: create two levels, collapse, persist across relaunch
 - [ ] Not verified by hand: right-click menu items (Move Folder To, Delete) and inline rename on a subfolder — same code path as top-level folders
 
+## UI review fixes ✅ (2026-11-21) — high + medium findings from a full UI review
+- [x] Confirm before: deleting a folder (subtree, tab and running-command counts; tabs now reopen with ⇧⌘T), closing a tab
+      with a running command, deleting a host / snippet / template, ending a detached session, closing multi-host run mid-run
+- [x] Toast: max width, 3 lines, click to dismiss. Snippet sheet: Return moves to the next field, the last field runs or
+      inserts per "Run immediately", which also picks the default button
+- [x] Sidebar: one icon column for tab / folder / host rows, 20pt hover buttons, VoiceOver labels + actions; tab weight bug
+- [x] Tab header: title keeps 120pt, badges truncate; prod banner and host names truncate
+- [x] Shortcuts: prompt jump is ⇧⌘↑/⇧⌘↓ (⌘↑/⌘↓ work in text fields again), one Export Transcript (⇧⌘E), no visible
+      "Command Palette (alt)" (⇧⌘P removed); shortcuts sheet matches the menus and shows the configured quick-terminal key
+- [x] Palette: attention tabs first, stable order, hover selects, Escape always closes, rows are buttons for VoiceOver
+- [x] Session search: ↑/↓ + Return, hover highlight; Escape closes snippet / template / detached / shortcuts sheets
+- [ ] Not done (low): pane divider cursor/hit area, dot contrast on selected rows, nested "Move Folder To" menu, settings polish;
+      shortcut text still lives in menus, the sheet and the palette separately (no single table yet)
+- [ ] Not verified by hand: Escape on sheets and the confirmation dialogs themselves (background testing can't reach them)
+
 ## Parity pass ✅ (2026-11-20) — see PARITY.md
 - [x] Verified in the app: zoom / equalize / pane cycling + directional focus, dimmed inactive panes, smart tab names,
       search all sessions (now searches as you type), reopen closed tab, detach + reattach (running job survives),

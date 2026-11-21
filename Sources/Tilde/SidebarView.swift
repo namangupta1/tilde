@@ -39,7 +39,7 @@ struct SidebarView: View {
                 .menuStyle(.borderlessButton)
                 .fixedSize()
                 Spacer()
-                Button { store.newTab() } label: { Image(systemName: "plus") }
+                Button { store.newTab() } label: { Label("New Tab", systemImage: "plus").labelStyle(.iconOnly) }
                     .buttonStyle(.borderless)
                     .help("New Tab (⌘T)")
             }
@@ -176,7 +176,9 @@ struct FolderHeader: View {
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: folder.directory == nil ? "folder" : "folder.fill")
+                .imageScale(.small)
                 .foregroundStyle(.secondary)
+                .frame(width: 13)   // same icon column as tab rows and host rows
             if store.renamingFolderID == folder.id {
                 InlineRenameField(initial: folder.name) { name in
                     if let name { store.renameFolder(folder.id, to: name) } else { store.renamingFolderID = nil }
@@ -189,9 +191,14 @@ struct FolderHeader: View {
             }
             Spacer(minLength: 0)
             if hovering {
-                Button { store.newTab(inFolder: folder.id) } label: { Image(systemName: "plus") }
-                    .buttonStyle(.borderless)
-                    .help("New tab in \(folder.name)")
+                Button { store.newTab(inFolder: folder.id) } label: {
+                    Label("New Tab in \(folder.name)", systemImage: "plus")
+                        .labelStyle(.iconOnly)
+                        .frame(width: 20, height: 20)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .help("New tab in \(folder.name)")
             }
         }
         .padding(.vertical, 2)
@@ -203,6 +210,10 @@ struct FolderHeader: View {
             store.moveTab(id, toFolder: folder.id)
             return true
         } isTargeted: { isTargeted = $0 }
+        // VoiceOver / keyboard equivalents of the hover button and double-click rename.
+        .accessibilityAction(named: "New Tab") { store.newTab(inFolder: folder.id) }
+        .accessibilityAction(named: "New Subfolder") { store.addSubfolder(in: folder.id) }
+        .accessibilityAction(named: "Rename") { store.renamingFolderID = folder.id }
         .contextMenu {
             Button("New Tab") { store.newTab(inFolder: folder.id) }
             Button("New Subfolder") { store.addSubfolder(in: folder.id) }
@@ -226,7 +237,7 @@ struct FolderHeader: View {
             Divider()
             Button(store.childFolders(of: folder.id).isEmpty ? "Delete Folder and Close Its Tabs"
                                                              : "Delete Folder, Subfolders and Their Tabs",
-                   role: .destructive) { store.deleteFolder(folder.id) }
+                   role: .destructive) { store.deleteFolderConfirming(folder.id) }
         }
     }
 }
@@ -270,8 +281,9 @@ struct TabRow: View {
                     HStack(spacing: 4) {
                         Text(store.displayTitle(tab))
                             .lineLimit(1)
-                            .fontWeight(needsYou || agent == .waiting ? .semibold : .regular)
-                            .fontWeight(needsYou ? .bold : (tab.customTitle != nil ? .medium : .regular))
+                            .fontWeight(needsYou ? .bold
+                                        : agent == .waiting ? .semibold
+                                        : tab.customTitle != nil ? .medium : .regular)
                         if remote {
                             Image(systemName: "network").font(.caption2).foregroundStyle(.secondary)
                         }
@@ -292,8 +304,12 @@ struct TabRow: View {
             }
             Spacer(minLength: 0)
             if hovering {
-                Button { store.closeTab(tab.id) } label: {
-                    Image(systemName: "xmark").font(.caption2.weight(.semibold))
+                Button { store.closeTabConfirmingIfBusy(tab.id) } label: {
+                    Label("Close Tab", systemImage: "xmark")
+                        .labelStyle(.iconOnly)
+                        .font(.caption2.weight(.semibold))
+                        .frame(width: 20, height: 20)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.borderless)
                 .help("Close Tab")
@@ -306,6 +322,8 @@ struct TabRow: View {
         .simultaneousGesture(TapGesture(count: 1).onEnded { store.select(tab.id) })
         .simultaneousGesture(TapGesture(count: 2).onEnded { store.renamingTabID = tab.id })
         .help(tab.notes.isEmpty ? store.displayTitle(tab) : tab.notes)
+        .accessibilityAction(named: "Close Tab") { store.closeTabConfirmingIfBusy(tab.id) }
+        .accessibilityAction(named: "Rename") { store.renamingTabID = tab.id }
         .contextMenu {
             Button("Rename…") { store.renamingTabID = tab.id }
             if tab.customTitle != nil {
@@ -325,7 +343,7 @@ struct TabRow: View {
             }
             Button("Duplicate Tab") { store.duplicateTab(tab.id) }
             Divider()
-            Button("Close Tab", role: .destructive) { store.closeTab(tab.id) }
+            Button("Close Tab", role: .destructive) { store.closeTabConfirmingIfBusy(tab.id) }
         }
     }
 }

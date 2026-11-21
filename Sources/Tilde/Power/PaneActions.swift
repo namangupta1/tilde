@@ -108,8 +108,8 @@ extension WorkspaceStore {
         tab.id = UUID()
         tab.root = root
         tab.activePaneID = map[c.tab.activePaneID] ?? root.allPanes[0].id
+        if workspace.folders.isEmpty { workspace.folders.append(Folder(name: "Home", directory: NSHomeDirectory())) }
         let fi = workspace.folders.firstIndex { $0.id == c.folderID } ?? selectedFolderIndex ?? 0
-        guard workspace.folders.indices.contains(fi) else { return }
         workspace.folders[fi].tabs.insert(tab, at: min(c.index, workspace.folders[fi].tabs.count))
         workspace.folders[fi].isExpanded = true
         select(tab.id)
@@ -190,12 +190,16 @@ struct DetachedSessionsView: View {
                 List(items) { d in
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(d.title)
+                            Text(d.title).lineLimit(1).truncationMode(.middle)
                             Text("\(d.folderName) · \(d.tab.root.allPanes.count) pane\(d.tab.root.allPanes.count == 1 ? "" : "s") · detached \(d.detachedAt.formatted(.relative(presentation: .named)))")
-                                .font(.caption).foregroundStyle(.secondary)
+                                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                         }
-                        Spacer()
-                        Button("End") { store.endDetached(d.id) }
+                        .help(d.title)
+                        Spacer(minLength: 8)
+                        Button("End…") {
+                            guard Confirm.ask("End “\(d.title)”?", "Its shells and anything running in them are stopped.", confirm: "End Session") else { return }
+                            store.endDetached(d.id)
+                        }
                         Button("Reattach") { onClose(); store.reattach(d.id) }.buttonStyle(.borderedProminent)
                     }
                     .padding(.vertical, 2)
@@ -206,5 +210,6 @@ struct DetachedSessionsView: View {
         }
         .padding(18)
         .frame(width: 520)
+        .onExitCommand(perform: onClose)
     }
 }
